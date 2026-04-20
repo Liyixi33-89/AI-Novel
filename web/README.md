@@ -42,12 +42,13 @@ npm run dev
 | `GET /api/files/chapters/list` | 章节列表 |
 | `GET/POST /api/files/chapters/{n}` | 读写某章 |
 
-### 前端（6 个页面）
+### 前端（7 个页面）
 
 - 🏠 **主操作台** `/`：4 步生成按钮 + 任务状态 + 实时日志 + **Prompt 预览弹窗（编辑后再生成）**
 - 📝 **小说参数** `/params`：主题/类型/章数/字数/保存路径 + 章节引导
 - ⚙️ **模型配置** `/config`：LLM / Embedding provider 增删改 + 角色选择 + 连接测试 + 模型拉取
 - 📄 **文件预览** `/files`：架构/目录/摘要/人物/章节读写编辑（Ctrl+S 保存）
+- 👥 **角色库** `/characters`：结构化 CRUD（5 分类：物品/能力/状态/关系网/事件）+ 原文切换
 - 🔧 **工具箱** `/tools`：一致性检查 / 知识库导入 / 清空向量库
 - 🛡 **系统设置** `/settings`：代理设置 + WebDAV 备份配置
 
@@ -68,6 +69,18 @@ npm run dev
 | `POST /api/tools/import_knowledge` | 导入知识 txt 到向量库（异步） |
 | `POST /api/tools/clear_vectorstore` | 清空当前小说的向量库 |
 | `POST /api/tools/build_prompt` | 构建章节提示词（不调用 LLM，可预览） |
+
+### 后端角色库接口（`/api/characters/*`）
+
+| 接口 | 功能 |
+|---|---|
+| `GET /api/characters` | 列出所有角色（附条目数统计） |
+| `GET /api/characters/{name}` | 获取角色结构化详情 |
+| `POST /api/characters` | 创建新角色 |
+| `PUT /api/characters/{name}` | 更新（可改名） |
+| `POST /api/characters/{name}/rename` | 仅重命名 |
+| `DELETE /api/characters/{name}` | 删除角色 |
+| `GET/POST /api/characters/raw/text` | 原始 `character_state.txt` 读写 |
 
 ## 🔧 架构亮点
 

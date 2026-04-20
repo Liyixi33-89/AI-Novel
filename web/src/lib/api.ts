@@ -41,6 +41,20 @@ export const apiPost = async <T,>(path: string, body?: unknown): Promise<T> => {
   return handleResponse<T>(res);
 };
 
+export const apiPut = async <T,>(path: string, body?: unknown): Promise<T> => {
+  const res = await fetch(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return handleResponse<T>(res);
+};
+
+export const apiDelete = async <T,>(path: string): Promise<T> => {
+  const res = await fetch(path, { method: "DELETE" });
+  return handleResponse<T>(res);
+};
+
 export type TaskCreatedResp = { task_id: string; name: string };
 
 export type TaskInfoResp = {
@@ -200,4 +214,63 @@ export const api = {
     scene_location?: string;
     time_constraint?: string;
   }) => apiPost<{ prompt: string }>("/api/tools/build_prompt", payload),
+  // -------- characters --------
+  listCharacters: () => apiGet<CharacterListItem[]>("/api/characters"),
+  getCharacter: (name: string) =>
+    apiGet<Character>(`/api/characters/${encodeURIComponent(name)}`),
+  createCharacter: (payload: Character) =>
+    apiPost<Character>("/api/characters", payload),
+  updateCharacter: (name: string, payload: Character) =>
+    apiPut<Character>(`/api/characters/${encodeURIComponent(name)}`, payload),
+  renameCharacter: (name: string, new_name: string) =>
+    apiPost<Character>(`/api/characters/${encodeURIComponent(name)}/rename`, { new_name }),
+  deleteCharacter: (name: string) =>
+    apiDelete<{ ok: boolean }>(`/api/characters/${encodeURIComponent(name)}`),
+  readRawCharacters: () => apiGet<{ content: string }>("/api/characters/raw/text"),
+  saveRawCharacters: (content: string) =>
+    apiPost<{ ok: boolean }>("/api/characters/raw/text", { content }),
 };
+
+// ---------- Character 相关类型 ----------
+export const CHARACTER_SECTION_ORDER: readonly CharacterSectionKey[] = [
+  "物品",
+  "能力",
+  "状态",
+  "主要角色间关系网",
+  "触发或加深的事件",
+] as const;
+
+export type CharacterSectionKey =
+  | "物品"
+  | "能力"
+  | "状态"
+  | "主要角色间关系网"
+  | "触发或加深的事件";
+
+export type CharacterItem = {
+  name: string;
+  desc: string;
+  subtype?: string | null;
+};
+
+export type CharacterSections = Record<CharacterSectionKey, CharacterItem[]>;
+
+export type Character = {
+  name: string;
+  sections: CharacterSections;
+};
+
+export type CharacterListItem = {
+  name: string;
+  item_count: number;
+  ability_count: number;
+  relation_count: number;
+};
+
+export const emptyCharacterSections = (): CharacterSections => ({
+  物品: [],
+  能力: [],
+  状态: [],
+  主要角色间关系网: [],
+  触发或加深的事件: [],
+});

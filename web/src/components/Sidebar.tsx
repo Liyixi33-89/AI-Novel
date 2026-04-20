@@ -8,6 +8,7 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
+  Users,
   Wrench,
   X,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/params", label: "小说参数", icon: Sparkles },
   { to: "/config", label: "模型配置", icon: Settings },
   { to: "/files", label: "文件预览", icon: FileText },
+  { to: "/characters", label: "角色库", icon: Users },
   { to: "/tools", label: "工具箱", icon: Wrench },
   { to: "/settings", label: "系统设置", icon: ShieldAlert },
 ];

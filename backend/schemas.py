@@ -171,3 +171,46 @@ class BuildPromptResp(BaseModel):
 
 class ImportKnowledgeReq(BaseModel):
     file_path: str
+
+
+# ---------- Characters ----------
+class CharacterItem(BaseModel):
+    name: str
+    desc: str = ""
+    subtype: Optional[str] = None
+
+
+class CharacterSections(BaseModel):
+    """5 个固定分类，每个分类下是若干条目。"""
+
+    物品: list[CharacterItem] = Field(default_factory=list)
+    能力: list[CharacterItem] = Field(default_factory=list)
+    状态: list[CharacterItem] = Field(default_factory=list)
+    主要角色间关系网: list[CharacterItem] = Field(default_factory=list)
+    触发或加深的事件: list[CharacterItem] = Field(default_factory=list)
+
+
+class Character(BaseModel):
+    name: str
+    sections: CharacterSections = Field(default_factory=CharacterSections)
+
+
+class CharacterListItem(BaseModel):
+    """角色列表项（不含完整细节，供左侧列表展示）。"""
+
+    name: str
+    item_count: int
+    ability_count: int
+    relation_count: int
+
+
+class RawCharacterStateResp(BaseModel):
+    content: str
+
+
+class RawCharacterStateReq(BaseModel):
+    content: str
+
+
+class CharacterRenameReq(BaseModel):
+    new_name: str
