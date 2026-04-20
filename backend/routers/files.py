@@ -93,3 +93,22 @@ def save_chapter(number: int, req: SaveFileReq) -> dict[str, Any]:
     with open(full, "w", encoding="utf-8") as f:
         f.write(req.content)
     return {"ok": True}
+
+
+@router.post("/open_folder")
+def open_folder() -> dict[str, Any]:
+    """在系统文件管理器中打开当前保存路径。"""
+    import subprocess
+    import sys
+
+    filepath = _get_filepath()
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(filepath)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", filepath])
+        else:
+            subprocess.Popen(["xdg-open", filepath])
+        return {"ok": True, "path": filepath}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"打开失败：{exc}") from exc

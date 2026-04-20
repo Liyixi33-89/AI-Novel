@@ -6,17 +6,14 @@ import {
   Loader2,
   PenLine,
   PlayCircle,
+  Save,
   Sparkles as SparklesIcon,
   Wand2,
 } from "lucide-react";
 import LogStream from "@/components/LogStream";
 import Modal from "@/components/Modal";
-import {
-  api,
-  fetchTask,
-  type TaskCreatedResp,
-  type TaskInfoResp,
-} from "@/lib/api";
+import PresetSwitcher from "@/components/PresetSwitcher";
+import { api, fetchTask, type OtherParams, type TaskCreatedResp, type TaskInfoResp } from "@/lib/api";
 
 type StepKey = "architecture" | "directory" | "draft" | "finalize";
 
@@ -75,10 +72,22 @@ const STATUS_LABEL: Record<TaskInfoResp["status"], string> = {
   failed: "❌ 失败",
 };
 
+const DEFAULT_PARAMS: OtherParams = {
+  topic: "",
+  genre: "",
+  num_chapters: 0,
+  word_number: 3000,
+  filepath: "",
+  chapter_num: "1",
+  user_guidance: "",
+  characters_involved: "",
+  key_items: "",
+  scene_location: "",
+  time_constraint: "",
+};
+
 const StatusBadge = ({ info }: { info?: TaskInfoResp }) => {
-  if (!info) {
-    return <span className="text-xs text-slate-400 dark:text-slate-500">未执行</span>;
-  }
+  if (!info) return <span className="text-xs text-slate-400 dark:text-slate-500">未执行</span>;
   return (
     <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_MAP[info.status]}`}>
       {STATUS_LABEL[info.status]}
@@ -88,41 +97,45 @@ const StatusBadge = ({ info }: { info?: TaskInfoResp }) => {
 
 const Home = () => {
   const [running, setRunning] = useState<RunningMap>({});
-  const [chapterNum, setChapterNum] = useState<number>(1);
-  const [wordNumber, setWordNumber] = useState<number>(3000);
-  const [filepath, setFilepath] = useState<string>("");
-  const [loadingParams, setLoadingParams] = useState<boolean>(true);
 
-  // ---- Prompt 预览弹窗相关 ----
+  // 预设相关
+  const [presetNames, setPresetNames] = useState<string[]>([]);
+  const [activePreset, setActivePreset] = useState<string>("");
+  const [loadingPreset, setLoadingPreset] = useState<boolean>(true);
+
+  // 当前编辑中的参数（未保存 = dirty）
+  const [params, setParams] = useState<OtherParams>(DEFAULT_PARAMS);
+  const [dirty, setDirty] = useState<boolean>(false);
+  const [savingParams, setSavingParams] = useState<boolean>(false);
+
+  // Prompt 预览弹窗
   const [promptOpen, setPromptOpen] = useState<boolean>(false);
   const [promptLoading, setPromptLoading] = useState<boolean>(false);
   const [promptText, setPromptText] = useState<string>("");
   const [promptError, setPromptError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const cfg = await api.getConfig();
-        if (!mounted) return;
-        const op = cfg.other_params;
-        if (op?.filepath) setFilepath(op.filepath);
-        if (op?.chapter_num) {
-          const n = parseInt(op.chapter_num, 10);
-          if (!Number.isNaN(n) && n > 0) setChapterNum(n);
-        }
-        if (op?.word_number && op.word_number > 0) setWordNumber(op.word_number);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (mounted) setLoadingParams(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
+  // ---- 初始化 & 切换预设时重新加载 ----
+  const loadActivePreset = useCallback(async (): Promise<void> => {
+    setLoadingPreset(true);
+    try {
+      const idx = await api.listPresets();
+      setPresetNames(idx.names);
+      setActivePreset(idx.active);
+      const p = await api.getPreset(idx.active);
+      setParams({ ...DEFAULT_PARAMS, ...p });
+      setDirty(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPreset(false);
+    }
   }, []);
 
+  useEffect(() => {
+    void loadActivePreset();
+  }, [loadActivePreset]);
+
+  // ---- 任务轮询 ----
   const pollTask = useCallback((stepKey: StepKey, task: TaskCreatedResp) => {
     setRunning((prev) => ({
       ...prev,
@@ -136,7 +149,6 @@ const Home = () => {
         extra: {},
       },
     }));
-
     const timer = window.setInterval(async () => {
       try {
         const info = await fetchTask(task.task_id);
@@ -156,25 +168,51 @@ const Home = () => {
     return !!info && (info.status === "pending" || info.status === "running");
   };
 
+  const canRun = !!params.filepath.trim() && !!params.topic.trim() && !dirty;
+
+  // ---- 参数编辑 ----
+  const updateField = <K extends keyof OtherParams>(key: K, value: OtherParams[K]): void => {
+    setParams((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+  };
+
+  const handleSaveParams = async (): Promise<void> => {
+    if (!activePreset || savingParams) return;
+    setSavingParams(true);
+    try {
+      await api.savePreset(activePreset, params);
+      setDirty(false);
+    } catch (err) {
+      const e = err as { detail?: string };
+      window.alert(`保存失败：${e.detail ?? String(err)}`);
+    } finally {
+      setSavingParams(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      void handleSaveParams();
+    }
+  };
+
+  // ---- 生成相关 ----
+  const chapterNum = Math.max(1, parseInt(params.chapter_num || "1", 10) || 1);
+  const wordNumber = params.word_number > 0 ? params.word_number : 3000;
+
   const handleRun = async (step: StepKey): Promise<void> => {
     if (isRunning(step)) return;
+    if (dirty) {
+      if (!window.confirm("当前参数有未保存的修改，确定放弃并运行旧参数？")) return;
+    }
     try {
       let resp: TaskCreatedResp;
-      if (step === "architecture") {
-        resp = await api.generateArchitecture();
-      } else if (step === "directory") {
-        resp = await api.generateDirectory();
-      } else if (step === "draft") {
-        resp = await api.generateChapterDraft({
-          chapter_num: chapterNum,
-          word_number: wordNumber,
-        });
-      } else {
-        resp = await api.finalizeChapter({
-          chapter_num: chapterNum,
-          word_number: wordNumber,
-        });
-      }
+      if (step === "architecture") resp = await api.generateArchitecture();
+      else if (step === "directory") resp = await api.generateDirectory();
+      else if (step === "draft")
+        resp = await api.generateChapterDraft({ chapter_num: chapterNum, word_number: wordNumber });
+      else resp = await api.finalizeChapter({ chapter_num: chapterNum, word_number: wordNumber });
       pollTask(step, resp);
     } catch (err) {
       const e = err as { detail?: string };
@@ -182,17 +220,14 @@ const Home = () => {
     }
   };
 
-  // ---- Prompt 预览与编辑 ----
+  // ---- Prompt 预览 ----
   const handlePreviewPrompt = async (): Promise<void> => {
     setPromptOpen(true);
     setPromptLoading(true);
     setPromptError(null);
     setPromptText("");
     try {
-      const res = await api.buildPrompt({
-        chapter_num: chapterNum,
-        word_number: wordNumber,
-      });
+      const res = await api.buildPrompt({ chapter_num: chapterNum, word_number: wordNumber });
       setPromptText(res.prompt ?? "");
     } catch (err) {
       const e = err as { detail?: string };
@@ -227,56 +262,132 @@ const Home = () => {
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">主操作台</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          四步流水线：架构 → 目录 → 章节草稿 → 定稿。右侧为 SSE 实时日志。
-        </p>
+    <div className="flex h-full flex-col" onKeyDown={handleKeyDown}>
+      <header className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">主操作台</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              四步流水线：架构 → 目录 → 章节草稿 → 定稿。参数来自当前预设，切换预设即切换项目。
+            </p>
+          </div>
+          <PresetSwitcher
+            active={activePreset}
+            names={presetNames}
+            onChanged={loadActivePreset}
+            loading={loadingPreset}
+          />
+        </div>
       </header>
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-3">
         <div className="col-span-1 overflow-auto p-4 sm:p-6 lg:col-span-2">
+          {/* ====== 基础设定 ====== */}
           <section className="card mb-5">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-200">章节参数</h3>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">基础设定</h3>
+              <div className="flex items-center gap-2">
+                {dirty ? (
+                  <span className="text-xs text-amber-600 dark:text-amber-400">● 未保存</span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleSaveParams}
+                  disabled={!dirty || savingParams || loadingPreset}
+                  className="btn-primary !px-3 !py-1 text-xs"
+                  aria-label="保存到当前预设"
+                  tabIndex={0}
+                >
+                  {savingParams ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  保存 <span className="opacity-60">(Ctrl+S)</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
-                <label className="label" htmlFor="chap-num">
-                  章节号
+                <label className="label" htmlFor="h-topic">
+                  主题 <span className="text-rose-500">*</span>
                 </label>
                 <input
-                  id="chap-num"
-                  type="number"
-                  min={1}
+                  id="h-topic"
                   className="input"
-                  value={chapterNum}
-                  onChange={(e) => setChapterNum(parseInt(e.target.value || "1", 10))}
+                  value={params.topic}
+                  onChange={(e) => updateField("topic", e.target.value)}
+                  placeholder="例如：天启轮回 × 宿命终结"
                   tabIndex={0}
                 />
               </div>
               <div>
-                <label className="label" htmlFor="word-num">
-                  目标字数
+                <label className="label" htmlFor="h-genre">
+                  类型 <span className="text-rose-500">*</span>
                 </label>
                 <input
-                  id="word-num"
+                  id="h-genre"
+                  className="input"
+                  value={params.genre}
+                  onChange={(e) => updateField("genre", e.target.value)}
+                  placeholder="玄幻 / 悬疑 / 科幻"
+                  tabIndex={0}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="h-nchap">
+                  章节总数
+                </label>
+                <input
+                  id="h-nchap"
+                  type="number"
+                  min={0}
+                  className="input"
+                  value={params.num_chapters}
+                  onChange={(e) => updateField("num_chapters", parseInt(e.target.value || "0", 10))}
+                  tabIndex={0}
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="h-wnum">
+                  每章字数
+                </label>
+                <input
+                  id="h-wnum"
                   type="number"
                   min={500}
                   step={100}
                   className="input"
-                  value={wordNumber}
-                  onChange={(e) => setWordNumber(parseInt(e.target.value || "3000", 10))}
+                  value={params.word_number}
+                  onChange={(e) => updateField("word_number", parseInt(e.target.value || "3000", 10))}
+                  tabIndex={0}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="label" htmlFor="h-fp">
+                  保存路径 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="h-fp"
+                  className="input font-mono text-xs"
+                  value={params.filepath}
+                  onChange={(e) => updateField("filepath", e.target.value)}
+                  placeholder={"C:\\novels\\my_novel"}
                   tabIndex={0}
                 />
               </div>
               <div>
-                <label className="label">保存路径</label>
-                <div
-                  className="input truncate !bg-slate-50 !text-slate-500 dark:!bg-slate-800 dark:!text-slate-400"
-                  title={filepath}
-                >
-                  {loadingParams ? "加载中..." : filepath || "（未配置，请前往配置页）"}
-                </div>
+                <label className="label" htmlFor="h-cnum">
+                  当前章节号
+                </label>
+                <input
+                  id="h-cnum"
+                  className="input"
+                  value={params.chapter_num}
+                  onChange={(e) => updateField("chapter_num", e.target.value)}
+                  tabIndex={0}
+                />
               </div>
             </div>
 
@@ -284,12 +395,12 @@ const Home = () => {
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-brand-300 bg-brand-50/50 px-3 py-2 dark:border-brand-500/30 dark:bg-brand-500/5">
               <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                 <SparklesIcon className="h-3.5 w-3.5 text-brand-500" />
-                <span>在生成草稿前预览并编辑章节 Prompt（可选）</span>
+                <span>生成草稿前预览并编辑章节 Prompt（可选）</span>
               </div>
               <button
                 type="button"
                 onClick={handlePreviewPrompt}
-                disabled={promptLoading}
+                disabled={promptLoading || !params.filepath.trim()}
                 className="btn-secondary !px-3 !py-1 text-xs"
                 aria-label="预览并编辑 Prompt"
                 tabIndex={0}
@@ -303,6 +414,17 @@ const Home = () => {
               </button>
             </div>
           </section>
+
+          {/* ====== 生成步骤 ====== */}
+          {!params.filepath.trim() || !params.topic.trim() ? (
+            <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+              ⚠️ 请先填写「主题」和「保存路径」并保存，才能执行生成任务。
+            </div>
+          ) : dirty ? (
+            <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+              ● 当前参数有未保存的修改，建议先保存（Ctrl+S）再运行
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {STEPS.map((step) => {
@@ -328,10 +450,11 @@ const Home = () => {
                     <button
                       type="button"
                       onClick={() => handleRun(step.key)}
-                      disabled={isActive}
+                      disabled={isActive || !canRun}
                       className="btn-primary"
                       aria-label={step.title}
                       tabIndex={0}
+                      title={canRun ? "" : "请先填写主题和保存路径并保存"}
                     >
                       {isActive ? (
                         <>

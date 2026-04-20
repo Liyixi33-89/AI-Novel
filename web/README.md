@@ -44,13 +44,20 @@ npm run dev
 
 ### 前端（7 个页面）
 
-- 🏠 **主操作台** `/`：4 步生成按钮 + 任务状态 + 实时日志 + **Prompt 预览弹窗（编辑后再生成）**
-- 📝 **小说参数** `/params`：主题/类型/章数/字数/保存路径 + 章节引导
+- 🏠 **主操作台** `/`：**预设切换器 + 基础设定内联编辑** + 4 步生成按钮 + 任务状态 + 实时日志 + Prompt 预览弹窗
+- 📝 **小说参数** `/params`：完整参数表（含章节级引导）+ 预设切换
 - ⚙️ **模型配置** `/config`：LLM / Embedding provider 增删改 + 角色选择 + 连接测试 + 模型拉取
 - 📄 **文件预览** `/files`：架构/目录/摘要/人物/章节读写编辑（Ctrl+S 保存）
 - 👥 **角色库** `/characters`：结构化 CRUD（5 分类：物品/能力/状态/关系网/事件）+ 原文切换
 - 🔧 **工具箱** `/tools`：一致性检查 / 知识库导入 / 清空向量库
 - 🛡 **系统设置** `/settings`：代理设置 + WebDAV 备份配置
+
+### ✨ 多项目预设集
+
+`config.json` 中引入 `novel_presets`（多套小说参数）+ `active_preset` 字段。
+- 在"主操作台"或"小说参数"页顶部下拉切换项目
+- 激活某预设时，会自动 copy 到 `other_params`，**所有生成接口完全无感知**
+- 支持新建 / 复制 / 改名 / 删除 / 一键打开保存文件夹
 
 ### UI 特性
 
@@ -81,6 +88,19 @@ npm run dev
 | `POST /api/characters/{name}/rename` | 仅重命名 |
 | `DELETE /api/characters/{name}` | 删除角色 |
 | `GET/POST /api/characters/raw/text` | 原始 `character_state.txt` 读写 |
+
+### 后端预设接口（`/api/presets/*`）
+
+| 接口 | 功能 |
+|---|---|
+| `GET /api/presets` | 列出所有预设 `{ active, names }` |
+| `GET /api/presets/{name}` | 获取某预设的 OtherParams |
+| `POST /api/presets/{name}` | 创建/覆盖预设 |
+| `POST /api/presets/{name}/activate` | 设为激活（自动同步到 other_params） |
+| `POST /api/presets/{name}/rename` | 重命名 |
+| `POST /api/presets/_copy` | 复制预设 |
+| `DELETE /api/presets/{name}` | 删除预设 |
+| `POST /api/files/open_folder` | 在系统文件管理器中打开当前 filepath |
 
 ## 🔧 架构亮点
 

@@ -229,6 +229,28 @@ export const api = {
   readRawCharacters: () => apiGet<{ content: string }>("/api/characters/raw/text"),
   saveRawCharacters: (content: string) =>
     apiPost<{ ok: boolean }>("/api/characters/raw/text", { content }),
+  // -------- presets --------
+  listPresets: () =>
+    apiGet<{ active: string; names: string[] }>("/api/presets"),
+  getPreset: (name: string) =>
+    apiGet<OtherParams>(`/api/presets/${encodeURIComponent(name)}`),
+  savePreset: (name: string, payload: OtherParams) =>
+    apiPost<OtherParams>(`/api/presets/${encodeURIComponent(name)}`, payload),
+  activatePreset: (name: string) =>
+    apiPost<{ active: string; params: OtherParams }>(
+      `/api/presets/${encodeURIComponent(name)}/activate`,
+    ),
+  deletePreset: (name: string) =>
+    apiDelete<{ ok: boolean; active: string }>(`/api/presets/${encodeURIComponent(name)}`),
+  copyPreset: (source: string, target: string) =>
+    apiPost<{ active: string; names: string[] }>("/api/presets/_copy", { source, target }),
+  renamePreset: (name: string, new_name: string) =>
+    apiPost<{ active: string; names: string[] }>(
+      `/api/presets/${encodeURIComponent(name)}/rename`,
+      { new_name },
+    ),
+  // -------- misc --------
+  openFolder: () => apiPost<{ ok: boolean; path: string }>("/api/files/open_folder"),
 };
 
 // ---------- Character 相关类型 ----------

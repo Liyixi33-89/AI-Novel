@@ -19,6 +19,7 @@ from backend.routers import characters as characters_router
 from backend.routers import config as config_router
 from backend.routers import files as files_router
 from backend.routers import generation as generation_router
+from backend.routers import presets as presets_router
 from backend.routers import tools as tools_router
 from backend.services.log_bus import install_logging_bridge, log_bus
 
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(generation_router.router)
     app.include_router(tools_router.router)
     app.include_router(characters_router.router)
+    app.include_router(presets_router.router)
 
     @app.get("/api/health")
     def _health() -> dict[str, str]:
