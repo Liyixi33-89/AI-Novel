@@ -4,11 +4,12 @@ import Config from "@/pages/Config";
 import Files from "@/pages/Files";
 import Home from "@/pages/Home";
 import Params from "@/pages/Params";
+import Settings from "@/pages/Settings";
 import Tools from "@/pages/Tools";
 
 const App = () => {
   return (
-    <div className="flex h-full w-full">
+    <div className="flex h-full w-full flex-col lg:flex-row">
       <Sidebar />
       <main className="flex-1 overflow-hidden">
         <Routes>
@@ -17,6 +18,7 @@ const App = () => {
           <Route path="/config" element={<Config />} />
           <Route path="/files" element={<Files />} />
           <Route path="/tools" element={<Tools />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

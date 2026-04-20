@@ -82,10 +82,10 @@ const Params = () => {
 
   return (
     <div className="flex h-full flex-col" onKeyDown={handleKeyDown}>
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">小说参数</h1>
-          <p className="mt-1 text-sm text-slate-500">主题、类型、章节数、字数与保存路径等写入 config.other_params。</p>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">小说参数</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">主题、类型、章节数、字数与保存路径等写入 config.other_params。</p>
         </div>
         <button
           type="button"
@@ -102,13 +102,13 @@ const Params = () => {
 
       <div className="flex-1 overflow-auto p-6">
         {message ? (
-          <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+          <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
             {message}
           </div>
         ) : null}
 
         <section className="card mb-5">
-          <h3 className="mb-4 text-sm font-semibold text-slate-800">基础设定</h3>
+          <h3 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-100">基础设定</h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <FormField label="主题" htmlFor="p-topic" required>
               <input
@@ -176,7 +176,7 @@ const Params = () => {
         </section>
 
         <section className="card">
-          <h3 className="mb-4 text-sm font-semibold text-slate-800">章节级引导（可选）</h3>
+          <h3 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-100">章节级引导（可选）</h3>
           <div className="grid grid-cols-1 gap-4">
             <FormField label="内容指导" htmlFor="p-guide" hint="会贯穿整本小说的写作指导">
               <textarea

@@ -153,9 +153,9 @@ const Tools = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-slate-200 bg-white px-6 py-4">
-        <h1 className="text-lg font-semibold text-slate-900">工具箱</h1>
-        <p className="mt-1 text-sm text-slate-500">
+      <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">工具箱</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           一致性检查、知识库管理。所有异步任务的执行日志将同步显示在右侧。
         </p>
       </header>
@@ -169,7 +169,7 @@ const Tools = () => {
                 <ShieldCheck className="h-5 w-5" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-slate-800">一致性检查</h3>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">一致性检查</h3>
                 <p className="text-xs text-slate-500">
                   使用「一致性审校 LLM」对当前章节（取自配置 <code>other_params.chapter_num</code>）做冲突检查。
                 </p>
@@ -205,7 +205,7 @@ const Tools = () => {
                 <FileUp className="h-5 w-5" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-slate-800">导入知识文件</h3>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">导入知识文件</h3>
                 <p className="text-xs text-slate-500">
                   将 .txt 文本文件切分后追加到当前保存路径的向量库中。
                 </p>
@@ -257,7 +257,7 @@ const Tools = () => {
                 <Database className="h-5 w-5" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-slate-800">清空向量库</h3>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">清空向量库</h3>
                 <p className="text-xs text-slate-500">
                   删除当前保存路径下的整个 <code>vectorstore</code> 目录。注意：不可恢复。
                 </p>
@@ -284,7 +284,7 @@ const Tools = () => {
           </section>
         </div>
 
-        <aside className="col-span-1 border-l border-slate-200 bg-white">
+        <aside className="col-span-1 border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <LogStream />
         </aside>
       </div>

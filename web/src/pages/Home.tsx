@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, CheckCircle2, FileCog, Loader2, PenLine, PlayCircle } from "lucide-react";
+import {
+  BookOpen,
+  CheckCircle2,
+  FileCog,
+  Loader2,
+  PenLine,
+  PlayCircle,
+  Sparkles as SparklesIcon,
+  Wand2,
+} from "lucide-react";
 import LogStream from "@/components/LogStream";
+import Modal from "@/components/Modal";
 import {
   api,
   fetchTask,
@@ -24,41 +34,71 @@ const STEPS: Step[] = [
     title: "1. 生成小说架构",
     desc: "调用架构 LLM，生成核心种子、角色动力学、世界观与三幕式情节。",
     icon: BookOpen,
-    accent: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    accent: "border-indigo-400",
   },
   {
     key: "directory",
     title: "2. 生成章节目录",
     desc: "基于已有架构生成每章标题与简介（支持分块续写）。",
     icon: FileCog,
-    accent: "bg-sky-50 text-sky-700 border-sky-200",
+    accent: "border-sky-400",
   },
   {
     key: "draft",
     title: "3. 生成章节草稿",
     desc: "根据当前章节号与参数，生成指定章节的草稿正文。",
     icon: PenLine,
-    accent: "bg-amber-50 text-amber-700 border-amber-200",
+    accent: "border-amber-400",
   },
   {
     key: "finalize",
     title: "4. 章节定稿",
     desc: "更新全局摘要、角色状态，并写入向量库。",
     icon: CheckCircle2,
-    accent: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    accent: "border-emerald-400",
   },
 ];
 
 type RunningMap = Partial<Record<StepKey, TaskInfoResp>>;
+
+const STATUS_MAP: Record<TaskInfoResp["status"], string> = {
+  pending: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  running: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+  success: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
+  failed: "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300",
+};
+
+const STATUS_LABEL: Record<TaskInfoResp["status"], string> = {
+  pending: "等待中",
+  running: "运行中",
+  success: "✅ 完成",
+  failed: "❌ 失败",
+};
+
+const StatusBadge = ({ info }: { info?: TaskInfoResp }) => {
+  if (!info) {
+    return <span className="text-xs text-slate-400 dark:text-slate-500">未执行</span>;
+  }
+  return (
+    <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_MAP[info.status]}`}>
+      {STATUS_LABEL[info.status]}
+    </span>
+  );
+};
 
 const Home = () => {
   const [running, setRunning] = useState<RunningMap>({});
   const [chapterNum, setChapterNum] = useState<number>(1);
   const [wordNumber, setWordNumber] = useState<number>(3000);
   const [filepath, setFilepath] = useState<string>("");
-  const [loadingParams, setLoadingParams] = useState(true);
+  const [loadingParams, setLoadingParams] = useState<boolean>(true);
 
-  // 拉取 config 中保存路径与章节号作为默认值
+  // ---- Prompt 预览弹窗相关 ----
+  const [promptOpen, setPromptOpen] = useState<boolean>(false);
+  const [promptLoading, setPromptLoading] = useState<boolean>(false);
+  const [promptText, setPromptText] = useState<string>("");
+  const [promptError, setPromptError] = useState<string | null>(null);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -83,7 +123,6 @@ const Home = () => {
     };
   }, []);
 
-  // 轮询任务状态直到结束
   const pollTask = useCallback((stepKey: StepKey, task: TaskCreatedResp) => {
     setRunning((prev) => ({
       ...prev,
@@ -117,7 +156,7 @@ const Home = () => {
     return !!info && (info.status === "pending" || info.status === "running");
   };
 
-  const handleRun = async (step: StepKey) => {
+  const handleRun = async (step: StepKey): Promise<void> => {
     if (isRunning(step)) return;
     try {
       let resp: TaskCreatedResp;
@@ -138,25 +177,68 @@ const Home = () => {
       }
       pollTask(step, resp);
     } catch (err) {
-      const e = err as { detail?: string; status?: number };
-      alert(`启动失败：${e.detail ?? String(err)}`);
+      const e = err as { detail?: string };
+      window.alert(`启动失败：${e.detail ?? String(err)}`);
+    }
+  };
+
+  // ---- Prompt 预览与编辑 ----
+  const handlePreviewPrompt = async (): Promise<void> => {
+    setPromptOpen(true);
+    setPromptLoading(true);
+    setPromptError(null);
+    setPromptText("");
+    try {
+      const res = await api.buildPrompt({
+        chapter_num: chapterNum,
+        word_number: wordNumber,
+      });
+      setPromptText(res.prompt ?? "");
+    } catch (err) {
+      const e = err as { detail?: string };
+      setPromptError(e.detail ?? String(err));
+    } finally {
+      setPromptLoading(false);
+    }
+  };
+
+  const handleClosePrompt = (): void => {
+    if (promptLoading) return;
+    setPromptOpen(false);
+  };
+
+  const handleRunWithCustomPrompt = async (): Promise<void> => {
+    if (!promptText.trim()) {
+      window.alert("Prompt 不能为空");
+      return;
+    }
+    try {
+      const resp = await api.generateChapterDraft({
+        chapter_num: chapterNum,
+        word_number: wordNumber,
+        custom_prompt_text: promptText,
+      });
+      pollTask("draft", resp);
+      setPromptOpen(false);
+    } catch (err) {
+      const e = err as { detail?: string };
+      window.alert(`启动失败：${e.detail ?? String(err)}`);
     }
   };
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-slate-200 bg-white px-6 py-4">
-        <h1 className="text-lg font-semibold text-slate-900">主操作台</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          四步流水线：架构 → 目录 → 章节草稿 → 定稿。所有任务在后台线程执行，实时日志在右侧显示。
+      <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">主操作台</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          四步流水线：架构 → 目录 → 章节草稿 → 定稿。右侧为 SSE 实时日志。
         </p>
       </header>
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-3">
-        {/* 左侧 2/3：步骤卡片与参数 */}
-        <div className="col-span-2 overflow-auto p-6">
+        <div className="col-span-1 overflow-auto p-4 sm:p-6 lg:col-span-2">
           <section className="card mb-5">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">章节参数</h3>
+            <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-200">章节参数</h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label className="label" htmlFor="chap-num">
@@ -189,30 +271,55 @@ const Home = () => {
               </div>
               <div>
                 <label className="label">保存路径</label>
-                <div className="input !bg-slate-50 !text-slate-500 truncate" title={filepath}>
+                <div
+                  className="input truncate !bg-slate-50 !text-slate-500 dark:!bg-slate-800 dark:!text-slate-400"
+                  title={filepath}
+                >
                   {loadingParams ? "加载中..." : filepath || "（未配置，请前往配置页）"}
                 </div>
               </div>
+            </div>
+
+            {/* Prompt 预览入口 */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-brand-300 bg-brand-50/50 px-3 py-2 dark:border-brand-500/30 dark:bg-brand-500/5">
+              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <SparklesIcon className="h-3.5 w-3.5 text-brand-500" />
+                <span>在生成草稿前预览并编辑章节 Prompt（可选）</span>
+              </div>
+              <button
+                type="button"
+                onClick={handlePreviewPrompt}
+                disabled={promptLoading}
+                className="btn-secondary !px-3 !py-1 text-xs"
+                aria-label="预览并编辑 Prompt"
+                tabIndex={0}
+              >
+                {promptLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3.5 w-3.5" />
+                )}
+                预览 Prompt
+              </button>
             </div>
           </section>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {STEPS.map((step) => {
               const info = running[step.key];
-              const running_ = isRunning(step.key);
+              const isActive = isRunning(step.key);
               const Icon = step.icon;
               return (
-                <article
-                  key={step.key}
-                  className={`card flex flex-col gap-3 border-l-4 ${step.accent.split(" ").pop()}`}
-                >
+                <article key={step.key} className={`card flex flex-col gap-3 border-l-4 ${step.accent}`}>
                   <div className="flex items-center gap-3">
-                    <div className={`rounded-md border p-2 ${step.accent}`}>
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                       <Icon className="h-5 w-5" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-slate-800">{step.title}</h4>
-                      <p className="text-xs text-slate-500">{step.desc}</p>
+                      <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        {step.title}
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{step.desc}</p>
                     </div>
                   </div>
 
@@ -221,12 +328,12 @@ const Home = () => {
                     <button
                       type="button"
                       onClick={() => handleRun(step.key)}
-                      disabled={running_}
+                      disabled={isActive}
                       className="btn-primary"
                       aria-label={step.title}
                       tabIndex={0}
                     >
-                      {running_ ? (
+                      {isActive ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
                           执行中
@@ -240,7 +347,7 @@ const Home = () => {
                     </button>
                   </div>
                   {info?.error ? (
-                    <pre className="max-h-24 overflow-auto rounded bg-rose-50 p-2 text-xs text-rose-700">
+                    <pre className="max-h-24 overflow-auto rounded bg-rose-50 p-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
                       {info.error}
                     </pre>
                   ) : null}
@@ -250,35 +357,67 @@ const Home = () => {
           </div>
         </div>
 
-        {/* 右侧 1/3：实时日志 */}
-        <aside className="col-span-1 h-full border-l border-slate-200 bg-white">
+        <aside className="col-span-1 h-full border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <LogStream />
         </aside>
       </div>
-    </div>
-  );
-};
 
-const StatusBadge = ({ info }: { info?: TaskInfoResp }) => {
-  if (!info) {
-    return <span className="text-xs text-slate-400">未执行</span>;
-  }
-  const map: Record<TaskInfoResp["status"], string> = {
-    pending: "bg-slate-100 text-slate-600",
-    running: "bg-blue-100 text-blue-700",
-    success: "bg-emerald-100 text-emerald-700",
-    failed: "bg-rose-100 text-rose-700",
-  };
-  const label: Record<TaskInfoResp["status"], string> = {
-    pending: "等待中",
-    running: "运行中",
-    success: "✅ 完成",
-    failed: "❌ 失败",
-  };
-  return (
-    <span className={`rounded px-2 py-0.5 text-xs font-medium ${map[info.status]}`}>
-      {label[info.status]}
-    </span>
+      {/* Prompt 编辑弹窗 */}
+      <Modal
+        open={promptOpen}
+        onClose={handleClosePrompt}
+        title={`编辑第 ${chapterNum} 章的 Prompt`}
+        description="这里的 Prompt 是后端实时构建的，你可以编辑后再发送给 LLM，实现更精准的控制。"
+        size="xl"
+        footer={
+          <>
+            <span className="mr-auto text-xs text-slate-500 dark:text-slate-400">
+              {promptText.length} 字符
+            </span>
+            <button
+              type="button"
+              onClick={handleClosePrompt}
+              className="btn-secondary"
+              aria-label="取消"
+              tabIndex={0}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleRunWithCustomPrompt}
+              disabled={promptLoading || !promptText.trim()}
+              className="btn-primary"
+              aria-label="使用此 Prompt 生成"
+              tabIndex={0}
+            >
+              <PlayCircle className="h-4 w-4" />
+              使用此 Prompt 生成草稿
+            </button>
+          </>
+        }
+      >
+        {promptLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-brand-500" />
+          </div>
+        ) : promptError ? (
+          <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+            ❌ {promptError}
+          </div>
+        ) : (
+          <textarea
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            rows={20}
+            spellCheck={false}
+            className="input h-[60vh] resize-none font-mono text-xs leading-relaxed"
+            aria-label="Prompt 编辑区"
+            tabIndex={0}
+          />
+        )}
+      </Modal>
+    </div>
   );
 };
 

@@ -53,9 +53,9 @@ const TextEditor = ({ value, onSave, readOnly = false, minRows = 20, placeholder
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2">
-        <div className="text-xs text-slate-500">
-          {charCount} 字符 {dirty ? <span className="ml-2 text-amber-600">● 未保存</span> : null}
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2 dark:border-slate-800">
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          {charCount} 字符 {dirty ? <span className="ml-2 text-amber-600 dark:text-amber-400">● 未保存</span> : null}
           {message ? <span className="ml-2">{message}</span> : null}
         </div>
         {!readOnly ? (
@@ -80,7 +80,7 @@ const TextEditor = ({ value, onSave, readOnly = false, minRows = 20, placeholder
         rows={minRows}
         spellCheck={false}
         placeholder={placeholder ?? "（空）"}
-        className="flex-1 resize-none border-0 bg-white p-4 font-mono text-sm leading-relaxed text-slate-800 focus:outline-none"
+        className="flex-1 resize-none border-0 bg-white p-4 font-mono text-sm leading-relaxed text-slate-800 focus:outline-none dark:bg-slate-900 dark:text-slate-100"
         tabIndex={0}
       />
     </div>

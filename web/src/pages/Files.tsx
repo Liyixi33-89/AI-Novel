@@ -82,15 +82,15 @@ const Files = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-slate-200 bg-white px-6 py-4">
-        <h1 className="text-lg font-semibold text-slate-900">文件预览</h1>
-        <p className="mt-1 text-sm text-slate-500">查看或编辑生成的小说文本。保存后会写回磁盘。</p>
+      <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">文件预览</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">查看或编辑生成的小说文本。保存后会写回磁盘。</p>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
         {/* 左侧文件树 */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-3 py-2 text-xs font-medium text-slate-500">元数据</div>
+        <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-200 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">元数据</div>
           <ul className="space-y-0.5 px-2 py-2">
             {META_ITEMS.map(({ key, label, icon: Icon }) => (
               <li key={key}>
@@ -113,7 +113,7 @@ const Files = () => {
             ))}
           </ul>
 
-          <div className="flex items-center justify-between border-y border-slate-200 px-3 py-2 text-xs font-medium text-slate-500">
+          <div className="flex items-center justify-between border-y border-slate-200 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
             <span>章节（{chapters.length}）</span>
             <button
               type="button"
@@ -155,7 +155,7 @@ const Files = () => {
         </aside>
 
         {/* 右侧编辑器 */}
-        <section className="flex flex-1 flex-col bg-white">
+        <section className="flex flex-1 flex-col bg-white dark:bg-slate-900">
           <div className="border-b border-slate-200 px-4 py-2 text-sm font-medium text-slate-700">
             {activeTitle}
           </div>

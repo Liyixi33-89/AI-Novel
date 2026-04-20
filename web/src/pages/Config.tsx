@@ -316,10 +316,10 @@ const Config = () => {
 
   return (
     <div className="flex h-full flex-col" onKeyDown={handleKeyDown}>
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">模型配置</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">模型配置</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             管理 LLM / Embedding provider，并为每个生成步骤选择使用的 LLM。
           </p>
         </div>
@@ -336,7 +336,7 @@ const Config = () => {
         </button>
       </header>
 
-      <nav className="flex gap-1 border-b border-slate-200 bg-white px-6">
+      <nav className="flex gap-1 border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-900">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -346,7 +346,7 @@ const Config = () => {
               "relative px-4 py-2 text-sm font-medium transition",
               tab === t.key
                 ? "text-brand-700"
-                : "text-slate-500 hover:text-slate-800",
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100",
             )}
             aria-label={t.label}
             tabIndex={0}
@@ -361,7 +361,7 @@ const Config = () => {
 
       <div className="flex-1 overflow-auto p-6">
         {message ? (
-          <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+          <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
             {message}
           </div>
         ) : null}
@@ -370,7 +370,7 @@ const Config = () => {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
             <aside className="card !p-2">
               <div className="mb-2 flex items-center justify-between px-2">
-                <span className="text-xs font-medium text-slate-500">Provider</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Provider</span>
                 <button
                   type="button"
                   onClick={handleAddLLM}
@@ -411,7 +411,7 @@ const Config = () => {
               {currentLLM ? (
                 <>
                   <div className="mb-4 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-800">{selectedLLM}</h3>
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedLLM}</h3>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -556,7 +556,7 @@ const Config = () => {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
             <aside className="card !p-2">
               <div className="mb-2 flex items-center justify-between px-2">
-                <span className="text-xs font-medium text-slate-500">Provider</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Provider</span>
                 <button
                   type="button"
                   onClick={handleAddEmbedding}
@@ -597,7 +597,7 @@ const Config = () => {
               {currentEmb ? (
                 <>
                   <div className="mb-4 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-800">{selectedEmbedding}</h3>
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedEmbedding}</h3>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -725,8 +725,8 @@ const Config = () => {
 
         {tab === "choose" ? (
           <section className="card max-w-3xl">
-            <h3 className="mb-2 text-sm font-semibold text-slate-800">为每个生成步骤选择 LLM</h3>
-            <p className="mb-4 text-xs text-slate-500">选项来自上方 LLM 配置中定义的 provider 名称。</p>
+            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">为每个生成步骤选择 LLM</h3>
+            <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">选项来自上方 LLM 配置中定义的 provider 名称。</p>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {CHOOSE_KEYS.map(({ key, label }) => (
                 <FormField key={key} label={label} htmlFor={`c-${key}`}>

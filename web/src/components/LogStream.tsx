@@ -49,15 +49,15 @@ const LogStream = () => {
 
   return (
     <section className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2">
+      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2 dark:border-slate-800">
         <div className="flex items-center gap-2">
           <Circle
             className={`h-3 w-3 ${connected ? "fill-emerald-500 text-emerald-500" : "fill-slate-300 text-slate-300"}`}
           />
-          <span className="text-sm font-medium text-slate-700">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
             实时日志 {connected ? "（已连接）" : "（未连接）"}
           </span>
-          <span className="text-xs text-slate-400">{lines.length} 条</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500">{lines.length} 条</span>
         </div>
         <button
           type="button"
