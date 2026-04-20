@@ -1,21 +1,60 @@
-/Novel_Src
-/.venv
-/build
-/dist
-/.vscode
-/__pycache__
+# ============ Python ============
 __pycache__/
 *.pyc
-/markdown
-/vectorstore
-/example
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+.python-version
+uv.lock
+pyproject.toml
+
+# ============ Build / Dist ============
+/build
+/dist
+*.spec.bak
+
+# ============ IDE ============
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ============ 日志 ============
+*.log
+app.log
+server.log
+pip_install.log
+pip_install.err.log
+
+# ============ 本地配置（含 API Key，禁止上传）============
 config.json
 config_test.json
-.idea/
-/novel
-app.log
+config_local.json
+config.*.json
+!config.example.json
+
+# ============ 生成内容（本地作品，不入库） ============
+/novel_output/
+/Novel_Src/
+/novel/
+/chapters/
+/markdown/
+/vectorstore/
+/example/
+/backup/
+partial_architecture.json
+
+# ============ 其它杂项 ============
 test.py
-/backup
-uv.lock
-.python-version
-pyproject.toml
+.DS_Store
+Thumbs.db
+
+# ============ Node / 前端 ============
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/.vite/
+web/*.local
+node_modules/

@@ -1,0 +1,92 @@
+# AI Novel Generator · Web Console
+
+Vite + React + TypeScript + TailwindCSS 构建的前端控制台，替代原 CustomTkinter GUI（GUI 仍保留，两者可并存）。
+
+## 启动
+
+### 1. 启动后端
+
+```bash
+# 在项目根目录
+pip install -r requirements.txt
+python server.py
+```
+
+默认监听 `http://127.0.0.1:8000`，API 前缀 `/api`。
+
+### 2. 启动前端
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+默认 `http://127.0.0.1:5173`，Vite 自动把 `/api` 代理到 `127.0.0.1:8000`。
+
+## ✨ 已实现功能
+
+### 后端（FastAPI + SSE）
+
+| 接口 | 功能 |
+|---|---|
+| `GET /api/health` | 健康检查 |
+| `GET/POST /api/config` | 读写 `config.json` |
+| `POST /api/generate/architecture` | 生成小说架构（后台任务） |
+| `POST /api/generate/directory` | 生成章节目录（后台任务） |
+| `POST /api/generate/chapter_draft` | 生成章节草稿（后台任务） |
+| `POST /api/generate/finalize_chapter` | 章节定稿（后台任务） |
+| `GET /api/tasks/{task_id}` | 任务状态查询 |
+| `GET /api/logs/stream` | **SSE 实时日志流** |
+| `GET/POST /api/files/{architecture\|directory\|summary\|character}` | 元数据读写 |
+| `GET /api/files/chapters/list` | 章节列表 |
+| `GET/POST /api/files/chapters/{n}` | 读写某章 |
+
+### 前端（5 个页面）
+
+- 🏠 **主操作台** `/`：4 步生成按钮 + 任务状态 + 实时日志
+- 📝 **小说参数** `/params`：主题/类型/章数/字数/保存路径 + 章节引导
+- ⚙️ **模型配置** `/config`：LLM / Embedding provider 增删改 + 角色选择 + **连接测试 + 模型拉取**
+- 📄 **文件预览** `/files`：架构/目录/摘要/人物/章节读写编辑（Ctrl+S 保存）
+- 🔧 **工具箱** `/tools`：一致性检查 / 知识库导入 / 清空向量库
+
+### 后端工具接口（`/api/tools/*`）
+
+| 接口 | 功能 |
+|---|---|
+| `POST /api/tools/test_llm` | 测试 LLM 连通性（直接发送 prompt） |
+| `POST /api/tools/test_embedding` | 测试 Embedding，返回向量维度 |
+| `POST /api/tools/list_models` | 从 OpenAI/Ollama 拉取模型列表 |
+| `POST /api/tools/consistency_check` | 一致性审校（异步任务） |
+| `POST /api/tools/import_knowledge` | 导入知识 txt 到向量库（异步） |
+| `POST /api/tools/clear_vectorstore` | 清空当前小说的向量库 |
+| `POST /api/tools/build_prompt` | 构建章节提示词（不调用 LLM，可预览） |
+
+## 🔧 架构亮点
+
+1. **GUI 完全保留**：原 `python main.py` 不受影响，Web 通过 `python server.py` 启动。
+2. **共享配置文件**：Web 和 GUI 共用同一份 `config.json`。
+3. **日志桥接**：`novel_generator.*` 中所有 `logging.info` 自动广播到 SSE，**生成代码零改动**。
+4. **任务隔离**：`ThreadPoolExecutor` 执行阻塞生成任务；前端通过 `task_id` 轮询状态。
+
+## 📂 目录结构
+
+```
+AI_NovelGenerator/
+├── ui/                     # 原 GUI（保留，不动）
+├── novel_generator/        # 核心生成逻辑（保留，不动）
+├── main.py                 # GUI 入口（保留）
+├── server.py               # 🆕 Web 服务入口
+├── backend/                # 🆕 FastAPI 后端
+│   ├── app.py
+│   ├── schemas.py
+│   ├── services/{log_bus,task_runner}.py
+│   └── routers/{config,files,generation}.py
+└── web/                    # 🆕 Vite + React + TS 前端
+    ├── src/
+    │   ├── App.tsx
+    │   ├── components/{Sidebar,LogStream,TextEditor,FormField}.tsx
+    │   ├── lib/api.ts
+    │   └── pages/{Home,Params,Config,Files}.tsx
+    └── package.json
+```
