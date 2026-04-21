@@ -4,6 +4,7 @@
 定稿章节和扩写章节（finalize_chapter、enrich_chapter_text）
 """
 import os
+import shutil
 import logging
 from llm_adapters import create_llm_adapter
 from embedding_adapters import create_embedding_adapter
@@ -18,6 +19,16 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+
+def _backup_file(src: str) -> None:
+    """若源文件存在且非空，则复制一份为 <src>.bak，用于在 LLM 写入失败时手动回滚。"""
+    try:
+        if os.path.exists(src) and os.path.getsize(src) > 0:
+            shutil.copy2(src, src + ".bak")
+    except OSError as exc:
+        # 备份失败不中断主流程，仅记录
+        logging.warning(f"Backup failed for {src}: {exc}")
 def finalize_chapter(
     novel_number: int,
     word_number: int,
@@ -75,6 +86,10 @@ def finalize_chapter(
     new_char_state = invoke_with_cleaning(llm_adapter, prompt_char_state)
     if not new_char_state.strip():
         new_char_state = old_character_state
+
+    # P2-8：覆盖写入前先备份旧状态，LLM 返回脏数据时可手动回滚 .bak
+    _backup_file(global_summary_file)
+    _backup_file(character_state_file)
 
     clear_file_content(global_summary_file)
     save_string_to_txt(new_global_summary, global_summary_file)

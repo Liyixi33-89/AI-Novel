@@ -22,14 +22,17 @@ def compute_chunk_size(number_of_chapters: int, max_tokens: int) -> int:
     基于“每章约100 tokens”的粗略估算，
     再结合当前max_tokens，计算分块大小：
       chunk_size = (floor(max_tokens/100/10)*10) - 10
-    并确保 chunk_size 不会小于1或大于实际章节数。
+    并确保 chunk_size 既不小于合理下限（min(5, number_of_chapters)），
+    也不会大于实际章节数。
     """
     tokens_per_chapter = 200.0
     ratio = max_tokens / tokens_per_chapter
     ratio_rounded_to_10 = int(ratio // 10) * 10
     chunk_size = ratio_rounded_to_10 - 10
-    if chunk_size < 1:
-        chunk_size = 1
+    # 合理下限：避免 max_tokens 很小时落到 1，导致频繁调用 LLM
+    min_chunk = min(5, max(1, number_of_chapters))
+    if chunk_size < min_chunk:
+        chunk_size = min_chunk
     if chunk_size > number_of_chapters:
         chunk_size = number_of_chapters
     return chunk_size

@@ -135,6 +135,21 @@ const Projects = () => {
       setCreateErr("已存在同名项目");
       return;
     }
+    // 检测 filepath 与现有项目冲突（共享同一磁盘目录会导致文件互相覆盖、状态混淆）
+    const filepathTrim = (form.filepath || "").trim();
+    if (filepathTrim) {
+      const conflict = projects.find(
+        (p) => (p.meta.filepath || "").trim().toLowerCase() === filepathTrim.toLowerCase(),
+      );
+      if (conflict) {
+        const ok = window.confirm(
+          `保存路径与项目「${conflict.name}」相同：\n${filepathTrim}\n\n` +
+            `继续将导致两个项目共享同一份磁盘文件（架构/目录/章节会互相覆盖）。\n` +
+            `确定要继续吗？（通常建议留空让系统自动生成新目录）`,
+        );
+        if (!ok) return;
+      }
+    }
     setCreating(true);
     setCreateErr(null);
     try {
@@ -231,17 +246,30 @@ const Projects = () => {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {projects.map((p) => (
-            <ProjectCard
-              key={p.id}
-              project={p}
-              busy={busyId === p.id}
-              onActivate={() => handleActivate(p)}
-              onOpen={() => handleOpen(p)}
-              onOpenFolder={() => handleOpenFolder(p)}
-              onDelete={() => handleDelete(p)}
-            />
-          ))}
+          {projects.map((p) => {
+            const myPath = (p.meta.filepath || "").trim().toLowerCase();
+            const sharedWith = myPath
+              ? projects
+                  .filter(
+                    (q) =>
+                      q.id !== p.id &&
+                      (q.meta.filepath || "").trim().toLowerCase() === myPath,
+                  )
+                  .map((q) => q.name)
+              : [];
+            return (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                busy={busyId === p.id}
+                sharedWith={sharedWith}
+                onActivate={() => handleActivate(p)}
+                onOpen={() => handleOpen(p)}
+                onOpenFolder={() => handleOpenFolder(p)}
+                onDelete={() => handleDelete(p)}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -305,18 +333,21 @@ const Projects = () => {
                 tabIndex={0}
               />
             </FormRow>
-            <FormRow label="章节数">
+            <FormRow label="章节数" hint="短篇 10-30 / 中篇 30-80 / 长篇 80-200；填 0 则不限上限">
               <input
                 type="number"
+                min={0}
                 className="input"
                 value={form.num_chapters}
                 onChange={(e) => setForm((s) => ({ ...s, num_chapters: Number(e.target.value) || 0 }))}
                 tabIndex={0}
               />
             </FormRow>
-            <FormRow label="每章字数">
+            <FormRow label="每章字数" hint="建议 2000-5000">
               <input
                 type="number"
+                min={0}
+                step={100}
                 className="input"
                 value={form.word_number}
                 onChange={(e) => setForm((s) => ({ ...s, word_number: Number(e.target.value) || 0 }))}
@@ -358,13 +389,22 @@ const Projects = () => {
 type CardProps = {
   project: ProjectInfo;
   busy: boolean;
+  sharedWith: string[];
   onActivate: () => void;
   onOpen: () => void;
   onOpenFolder: () => void;
   onDelete: () => void;
 };
 
-const ProjectCard = ({ project, busy, onActivate, onOpen, onOpenFolder, onDelete }: CardProps) => {
+const ProjectCard = ({
+  project,
+  busy,
+  sharedWith,
+  onActivate,
+  onOpen,
+  onOpenFolder,
+  onDelete,
+}: CardProps) => {
   const s = project.stats;
   return (
     <article
@@ -418,6 +458,14 @@ const ProjectCard = ({ project, busy, onActivate, onOpen, onOpenFolder, onDelete
           <FolderOpen className="mr-1 inline h-3 w-3" />
           {project.meta.filepath || "（未设置）"}
         </div>
+        {sharedWith.length > 0 ? (
+          <div
+            className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+            title="多个项目共享同一磁盘目录会导致架构/目录/章节互相覆盖，请为本项目指定独立路径"
+          >
+            ⚠ 与【{sharedWith.join(" / ")}】共享保存路径，数据会互相覆盖
+          </div>
+        ) : null}
         <div>最后修改：{formatDate(s.last_modified)}</div>
         <div>
           累计 {s.total_chars.toLocaleString()} 字
@@ -503,11 +551,12 @@ const Stat = ({ icon: Icon, label, value, highlight }: StatProps) => (
   </div>
 );
 
-type FormRowProps = { label: string; children: React.ReactNode };
-const FormRow = ({ label, children }: FormRowProps) => (
+type FormRowProps = { label: string; children: React.ReactNode; hint?: string };
+const FormRow = ({ label, children, hint }: FormRowProps) => (
   <div className="space-y-1">
     <div className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</div>
     {children}
+    {hint ? <div className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</div> : null}
   </div>
 );
 

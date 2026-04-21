@@ -80,6 +80,13 @@ def _count_chapters_and_chars(filepath: str) -> tuple[int, int, Optional[float]]
     for fn in os.listdir(chapters_dir):
         if fn.startswith("chapter_") and fn.endswith(".txt"):
             full = os.path.join(chapters_dir, fn)
+            # 只统计非空章节，避免"空文件 = 已存在"的误判
+            try:
+                size = os.path.getsize(full)
+            except OSError:
+                continue
+            if size <= 0:
+                continue
             cnt += 1
             try:
                 with open(full, "r", encoding="utf-8") as f:
@@ -110,6 +117,14 @@ def _count_characters(filepath: str) -> int:
     return sum(1 for line in text.splitlines() if line.strip().startswith("## "))
 
 
+def _file_nonempty(path: str) -> bool:
+    """文件存在且大小 > 0 才视为"已生成"，避免空文件误判。"""
+    try:
+        return os.path.isfile(path) and os.path.getsize(path) > 0
+    except OSError:
+        return False
+
+
 def compute_stats(filepath: str) -> ProjectStats:
     stats = ProjectStats()
     if not filepath:
@@ -122,9 +137,9 @@ def compute_stats(filepath: str) -> ProjectStats:
     stats.total_chars = total_chars
     stats.last_modified = last_mod
     stats.character_count = _count_characters(filepath)
-    stats.has_architecture = os.path.exists(os.path.join(filepath, "Novel_architecture.txt"))
-    stats.has_directory = os.path.exists(os.path.join(filepath, "Novel_directory.txt"))
-    stats.has_summary = os.path.exists(os.path.join(filepath, "global_summary.txt"))
+    stats.has_architecture = _file_nonempty(os.path.join(filepath, "Novel_architecture.txt"))
+    stats.has_directory = _file_nonempty(os.path.join(filepath, "Novel_directory.txt"))
+    stats.has_summary = _file_nonempty(os.path.join(filepath, "global_summary.txt"))
     return stats
 
 

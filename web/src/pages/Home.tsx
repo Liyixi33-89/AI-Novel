@@ -87,17 +87,32 @@ const DEFAULT_PARAMS: OtherParams = {
   time_constraint: "",
 };
 
-const StatusBadge = ({ info }: { info?: TaskInfoResp }) => {
-  if (!info) return <span className="text-xs text-slate-400 dark:text-slate-500">未执行</span>;
-  return (
-    <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_MAP[info.status]}`}>
-      {STATUS_LABEL[info.status]}
-    </span>
-  );
+const StatusBadge = ({
+  info,
+  alreadyExists,
+}: {
+  info?: TaskInfoResp;
+  alreadyExists?: boolean;
+}) => {
+  if (info) {
+    return (
+      <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_MAP[info.status]}`}>
+        {STATUS_LABEL[info.status]}
+      </span>
+    );
+  }
+  if (alreadyExists) {
+    return (
+      <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+        ✔ 已存在
+      </span>
+    );
+  }
+  return <span className="text-xs text-slate-400 dark:text-slate-500">未执行</span>;
 };
 
 const Home = () => {
-  const { refresh: refreshProjects, setCurrentProjectId } = useProjects();
+  const { refresh: refreshProjects, setCurrentProjectId, currentProject, projects } = useProjects();
   const [running, setRunning] = useState<RunningMap>({});
 
   // 预设相关
@@ -235,6 +250,30 @@ const Home = () => {
   const numChapters = params.num_chapters || 0;
   const overLimit = numChapters > 0 && chapterNum > numChapters;
 
+  // 已存在状态：根据 currentProject.stats 推导 4 步是否已有磁盘产物
+  // 说明：draft 步骤无法精确判断"正在编辑的 chapterNum 是否已存在"，
+  //       这里用 chapter_count >= chapterNum 作为近似条件。
+  const stats = currentProject?.stats;
+  const existsMap: Record<StepKey, boolean> = {
+    architecture: !!stats?.has_architecture,
+    directory: !!stats?.has_directory,
+    draft: !!stats && stats.chapter_count >= chapterNum,
+    finalize: !!stats?.has_summary && !!stats && stats.chapter_count >= chapterNum,
+  };
+
+  // 共享路径检测：当前项目 filepath 是否被其他项目占用
+  const currentPath = (currentProject?.meta.filepath || "").trim().toLowerCase();
+  const sharedWith: string[] =
+    currentProject && currentPath
+      ? projects
+          .filter(
+            (p) =>
+              p.id !== currentProject.id &&
+              (p.meta.filepath || "").trim().toLowerCase() === currentPath,
+          )
+          .map((p) => p.name)
+      : [];
+
   const handleRun = async (step: StepKey): Promise<void> => {
     if (isRunning(step)) return;
     if (dirty) {
@@ -313,6 +352,17 @@ const Home = () => {
           />
         </div>
       </header>
+
+      {sharedWith.length > 0 ? (
+        <div
+          className="mx-4 mt-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 sm:mx-6"
+          role="alert"
+        >
+          ⚠ 当前项目「{currentProject?.name}」与【{sharedWith.join(" / ")}】共享同一保存路径（
+          {currentProject?.meta.filepath}），架构 / 目录 / 章节会互相覆盖。
+          建议到「我的小说」页为本项目指定独立路径。
+        </div>
+      ) : null}
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-3">
         <div className="col-span-1 overflow-auto p-4 sm:p-6 lg:col-span-2">
@@ -495,7 +545,7 @@ const Home = () => {
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
-                    <StatusBadge info={info} />
+                    <StatusBadge info={info} alreadyExists={existsMap[step.key]} />
                     <button
                       type="button"
                       onClick={() => handleRun(step.key)}
