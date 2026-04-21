@@ -23,7 +23,7 @@ from ..services.projects_service import resolve_filepath
 from ..services.task_runner import task_runner
 from .config import CONFIG_FILE
 
-from config_manager import load_config
+from config_manager import load_config, save_config
 from novel_generator import (
     Chapter_blueprint_generate,
     Novel_architecture_generate,
@@ -89,6 +89,76 @@ def _get_novel_params(
         raise HTTPException(status_code=400, detail="请先在配置中设置保存路径（filepath）")
     params["filepath"] = filepath
     return params
+
+
+# ---------- 新增：三类校验（P0-2 / P0-3） ----------
+def _require_blueprint_exists(filepath: str) -> None:
+    """前置校验：架构 + 目录文件必须存在且非空，否则不允许生成章节。"""
+    arch_file = os.path.join(filepath, "Novel_architecture.txt")
+    dir_file = os.path.join(filepath, "Novel_directory.txt")
+    if not (os.path.exists(arch_file) and os.path.getsize(arch_file) > 0):
+        raise HTTPException(
+            status_code=400,
+            detail="尚未生成小说架构（Novel_architecture.txt 不存在或为空），请先执行 1.生成小说架构。",
+        )
+    if not (os.path.exists(dir_file) and os.path.getsize(dir_file) > 0):
+        raise HTTPException(
+            status_code=400,
+            detail="尚未生成章节目录（Novel_directory.txt 不存在或为空），请先执行 2.生成章节目录。",
+        )
+
+
+def _require_chapter_in_range(chap_num: int, params: dict[str, Any]) -> None:
+    """上限校验：1 <= chap_num <= num_chapters（num_chapters<=0 时放行，表示未约束）。"""
+    if chap_num < 1:
+        raise HTTPException(status_code=400, detail=f"章节号必须 ≥ 1，当前：{chap_num}")
+    num_chapters = int(params.get("num_chapters", 0) or 0)
+    if num_chapters > 0 and chap_num > num_chapters:
+        raise HTTPException(
+            status_code=400,
+            detail=f"章节号 {chap_num} 已超过设定总章节数 {num_chapters}，请先在参数中调大章节总数或停止生成。",
+        )
+
+
+def _require_chapter_file_exists(filepath: str, chap_num: int) -> None:
+    """定稿前置：chapters/chapter_N.txt 必须存在且非空（正文已生成）。"""
+    chapter_file = os.path.join(filepath, "chapters", f"chapter_{chap_num}.txt")
+    if not (os.path.exists(chapter_file) and os.path.getsize(chapter_file) > 0):
+        raise HTTPException(
+            status_code=400,
+            detail=f"第 {chap_num} 章草稿不存在或为空，请先生成该章草稿再定稿。",
+        )
+
+
+def _advance_chapter_num(project_id: str | None, chap_num: int) -> None:
+    """定稿成功后调用：把 preset.chapter_num 推进到 chap_num+1，并同步 other_params（若激活）。
+
+    注意：为避免并发任务间覆盖，这里每次都重新 load_config 再 save_config。
+    """
+    try:
+        cfg = load_config(CONFIG_FILE) or {}
+        presets = cfg.get("novel_presets") or {}
+        target: str | None = None
+        if project_id and project_id in presets:
+            target = project_id
+        else:
+            # 项目上下文缺失 → 尝试推进当前激活预设
+            active = cfg.get("active_preset")
+            if active and active in presets:
+                target = active
+        if not target:
+            return
+        next_num = max(1, chap_num + 1)
+        presets[target]["chapter_num"] = str(next_num)
+        # 同步 other_params（若目标为 active）
+        if cfg.get("active_preset") == target:
+            other = cfg.setdefault("other_params", {})
+            other["chapter_num"] = str(next_num)
+        save_config(cfg, CONFIG_FILE)
+        log_bus.publish(f"✅ 定稿完成，当前章节号已自动推进到 {next_num}")
+    except Exception as exc:  # pragma: no cover
+        # 推进失败不应影响主流程，仅记录
+        log_bus.publish(f"⚠️ 章节号自动推进失败：{exc}")
 
 
 class _ProjectScopedReq(BaseModel):
@@ -159,6 +229,10 @@ def gen_chapter_draft(req: GenerateChapterDraftReq) -> TaskCreatedResp:
     params = _get_novel_params(cfg, req.project_id)
 
     chap_num = req.chapter_num
+    # P0-2 / P0-3：上限校验 + 前置校验（架构 + 目录）
+    _require_chapter_in_range(chap_num, params)
+    _require_blueprint_exists(params["filepath"])
+
     word_number = req.word_number or int(params.get("word_number", 3000) or 3000)
 
     def _run() -> None:
@@ -200,7 +274,15 @@ def gen_finalize(req: FinalizeChapterReq) -> TaskCreatedResp:
     params = _get_novel_params(cfg, req.project_id)
 
     chap_num = req.chapter_num
+    # P0-2 / P0-3：上限 + 架构目录 + 草稿文件
+    _require_chapter_in_range(chap_num, params)
+    _require_blueprint_exists(params["filepath"])
+    # 若请求带了 edited_text，则稍后会写入；否则必须已有草稿文件
+    if req.edited_text is None:
+        _require_chapter_file_exists(params["filepath"], chap_num)
+
     word_number = req.word_number or int(params.get("word_number", 3000) or 3000)
+    project_id_for_advance = req.project_id
 
     def _run() -> None:
         filepath = params["filepath"]
@@ -254,6 +336,9 @@ def gen_finalize(req: FinalizeChapterReq) -> TaskCreatedResp:
             max_tokens=int(llm.get("max_tokens", 8192)),
             timeout=int(llm.get("timeout", 600)),
         )
+
+        # P0-1：定稿完成后自动推进 chapter_num
+        _advance_chapter_num(project_id_for_advance, chap_num)
 
     task_id = task_runner.submit(f"定稿第{chap_num}章", _run)
     return TaskCreatedResp(task_id=task_id, name=f"定稿第{chap_num}章")

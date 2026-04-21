@@ -141,33 +141,57 @@ const Home = () => {
     void loadActivePreset();
   }, [loadActivePreset]);
 
+  // ---- 任务完成后钩子：定稿成功时同步后端新 chapter_num ----
+  const handleTaskDone = useCallback(
+    async (stepKey: StepKey, info: TaskInfoResp): Promise<void> => {
+      if (info.status !== "success") return;
+      // 定稿完成：后端已自动把 preset.chapter_num 推进到 N+1
+      // 前端重新拉一次 preset，刷新 UI 中的章节号，避免覆盖下一章
+      if (stepKey === "finalize" && activePreset) {
+        try {
+          const p = await api.getPreset(activePreset);
+          setParams((prev) => ({ ...prev, ...p }));
+          setDirty(false);
+          void refreshProjects();
+        } catch (err) {
+          console.error("刷新 preset 失败", err);
+        }
+      }
+    },
+    [activePreset, refreshProjects],
+  );
+
   // ---- 任务轮询 ----
-  const pollTask = useCallback((stepKey: StepKey, task: TaskCreatedResp) => {
-    setRunning((prev) => ({
-      ...prev,
-      [stepKey]: {
-        id: task.task_id,
-        name: task.name,
-        status: "pending",
-        error: null,
-        started_at: null,
-        finished_at: null,
-        extra: {},
-      },
-    }));
-    const timer = window.setInterval(async () => {
-      try {
-        const info = await fetchTask(task.task_id);
-        setRunning((prev) => ({ ...prev, [stepKey]: info }));
-        if (info.status === "success" || info.status === "failed") {
+  const pollTask = useCallback(
+    (stepKey: StepKey, task: TaskCreatedResp) => {
+      setRunning((prev) => ({
+        ...prev,
+        [stepKey]: {
+          id: task.task_id,
+          name: task.name,
+          status: "pending",
+          error: null,
+          started_at: null,
+          finished_at: null,
+          extra: {},
+        },
+      }));
+      const timer = window.setInterval(async () => {
+        try {
+          const info = await fetchTask(task.task_id);
+          setRunning((prev) => ({ ...prev, [stepKey]: info }));
+          if (info.status === "success" || info.status === "failed") {
+            window.clearInterval(timer);
+            void handleTaskDone(stepKey, info);
+          }
+        } catch (err) {
+          console.error(err);
           window.clearInterval(timer);
         }
-      } catch (err) {
-        console.error(err);
-        window.clearInterval(timer);
-      }
-    }, 1500);
-  }, []);
+      }, 1500);
+    },
+    [handleTaskDone],
+  );
 
   const isRunning = (k: StepKey): boolean => {
     const info = running[k];
@@ -206,6 +230,10 @@ const Home = () => {
   // ---- 生成相关 ----
   const chapterNum = Math.max(1, parseInt(params.chapter_num || "1", 10) || 1);
   const wordNumber = params.word_number > 0 ? params.word_number : 3000;
+
+  // 章节上限状态：num_chapters > 0 且 chapterNum > num_chapters 视为越界
+  const numChapters = params.num_chapters || 0;
+  const overLimit = numChapters > 0 && chapterNum > numChapters;
 
   const handleRun = async (step: StepKey): Promise<void> => {
     if (isRunning(step)) return;
@@ -432,11 +460,26 @@ const Home = () => {
             </div>
           ) : null}
 
+          {overLimit ? (
+            <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+              ⛔ 当前章节号 <b>{chapterNum}</b> 已超过设定总章节数 <b>{numChapters}</b>
+              ，草稿 / 定稿已被禁用。请先调大「章节总数」或停止继续生成。
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {STEPS.map((step) => {
               const info = running[step.key];
               const isActive = isRunning(step.key);
               const Icon = step.icon;
+              const isChapterStep = step.key === "draft" || step.key === "finalize";
+              const disabledByLimit = isChapterStep && overLimit;
+              const disabled = isActive || !canRun || disabledByLimit;
+              const disabledReason = !canRun
+                ? "请先填写主题和保存路径并保存"
+                : disabledByLimit
+                  ? `当前章节号 ${chapterNum} 已超过总章节数 ${numChapters}`
+                  : "";
               return (
                 <article key={step.key} className={`card flex flex-col gap-3 border-l-4 ${step.accent}`}>
                   <div className="flex items-center gap-3">
@@ -456,11 +499,11 @@ const Home = () => {
                     <button
                       type="button"
                       onClick={() => handleRun(step.key)}
-                      disabled={isActive || !canRun}
+                      disabled={disabled}
                       className="btn-primary"
                       aria-label={step.title}
                       tabIndex={0}
-                      title={canRun ? "" : "请先填写主题和保存路径并保存"}
+                      title={disabledReason}
                     >
                       {isActive ? (
                         <>
