@@ -33,6 +33,56 @@ def get_vectorstore_dir(filepath: str) -> str:
     """获取 vectorstore 路径"""
     return os.path.join(filepath, "vectorstore")
 
+
+def _is_valid_embedding(vec) -> bool:
+    """判断一个 embedding 是否合法：非空 list/tuple 且首元素为数值。"""
+    if not isinstance(vec, (list, tuple)) or len(vec) == 0:
+        return False
+    first = vec[0]
+    return isinstance(first, (int, float)) or (
+        hasattr(first, "__float__") and not isinstance(first, (list, tuple))
+    )
+
+
+def _embed_and_filter(embedding_adapter, texts):
+    """
+    调用 embedding_adapter.embed_documents 得到向量，并与 texts 一一对齐。
+    过滤掉"向量为空/非法"的项。
+    返回 (valid_texts, valid_embeddings)。
+    若所有向量都失败，返回 ([], [])。
+    """
+    try:
+        vecs = call_with_retry(
+            func=embedding_adapter.embed_documents,
+            max_retries=3,
+            fallback_return=None,
+            texts=list(texts),
+        )
+    except Exception as e:  # noqa: BLE001
+        logging.warning(f"Embedding failed after retries: {e}")
+        return [], []
+
+    if vecs is None:
+        logging.warning("Embedding returned None (all retries failed).")
+        return [], []
+
+    valid_texts = []
+    valid_vecs = []
+    for idx, (t, v) in enumerate(zip(texts, vecs)):
+        if _is_valid_embedding(v):
+            valid_texts.append(t)
+            valid_vecs.append(list(v))
+        else:
+            logging.warning(
+                f"Skip index {idx}: invalid/empty embedding (text len={len(str(t))})."
+            )
+
+    if len(valid_texts) != len(texts):
+        logging.warning(
+            f"Embedding partial success: {len(valid_texts)}/{len(texts)} valid vectors."
+        )
+    return valid_texts, valid_vecs
+
 def clear_vector_store(filepath: str) -> bool:
     """清空 清空向量库"""
     import shutil
@@ -58,7 +108,12 @@ def init_vector_store(embedding_adapter, texts, filepath: str):
 
     store_dir = get_vectorstore_dir(filepath)
     os.makedirs(store_dir, exist_ok=True)
-    documents = [Document(page_content=str(t)) for t in texts]
+
+    # 先 embed 并过滤，保证送给 Chroma 的都是合法向量
+    valid_texts, valid_vecs = _embed_and_filter(embedding_adapter, texts)
+    if not valid_texts:
+        logging.warning("All embeddings failed/empty; skip vector store init.")
+        return None
 
     try:
         class LCEmbeddingWrapper(LCEmbeddings):
@@ -79,12 +134,18 @@ def init_vector_store(embedding_adapter, texts, filepath: str):
                 return res
 
         chroma_embedding = LCEmbeddingWrapper()
-        vectorstore = Chroma.from_documents(
-            documents,
-            embedding=chroma_embedding,
+        # 用空的方式创建 store，再手动 add，避免 langchain_chroma 重新 embed
+        vectorstore = Chroma(
             persist_directory=store_dir,
+            embedding_function=chroma_embedding,
             client_settings=Settings(anonymized_telemetry=False),
-            collection_name="novel_collection"
+            collection_name="novel_collection",
+        )
+        ids = [f"doc-{i}" for i in range(len(valid_texts))]
+        vectorstore._collection.add(
+            ids=ids,
+            documents=[str(t) for t in valid_texts],
+            embeddings=valid_vecs,
         )
         return vectorstore
     except Exception as e:
@@ -200,10 +261,25 @@ def update_vector_store(embedding_adapter, new_chapter: str, filepath: str):
             logging.info("New vector store created successfully.")
         return
 
+    # 已有 store：先 embed 并过滤，避免 chroma 收到空向量崩溃
+    valid_texts, valid_vecs = _embed_and_filter(embedding_adapter, splitted_texts)
+    if not valid_texts:
+        logging.warning("All new-chapter embeddings failed/empty; skip update.")
+        return
+
     try:
-        docs = [Document(page_content=str(t)) for t in splitted_texts]
-        store.add_documents(docs)
-        logging.info("Vector store updated with the new chapter splitted segments.")
+        # 为避免 id 冲突，使用时间戳前缀生成唯一 id
+        import time as _time
+        prefix = f"doc-{int(_time.time() * 1000)}"
+        ids = [f"{prefix}-{i}" for i in range(len(valid_texts))]
+        store._collection.add(
+            ids=ids,
+            documents=[str(t) for t in valid_texts],
+            embeddings=valid_vecs,
+        )
+        logging.info(
+            f"Vector store updated with {len(valid_texts)}/{len(splitted_texts)} new segments."
+        )
     except Exception as e:
         logging.warning(f"Failed to update vector store: {e}")
         traceback.print_exc()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Database,
   FileUp,
@@ -9,12 +9,14 @@ import {
 } from "lucide-react";
 import LogStream from "@/components/LogStream";
 import FormField from "@/components/FormField";
+import ProjectSwitcher from "@/components/ProjectSwitcher";
 import {
   api,
   fetchTask,
   type TaskCreatedResp,
   type TaskInfoResp,
 } from "@/lib/api";
+import { useLocalProject } from "@/lib/projectContext";
 
 type ToolKey = "consistency" | "import" | "clear";
 
@@ -44,6 +46,7 @@ const pollTask = (
 };
 
 const Tools = () => {
+  const { localProjectId, setLocalProjectId, projects } = useLocalProject();
   const [states, setStates] = useState<Record<ToolKey, ToolState>>({
     consistency: { running: false },
     import: { running: false },
@@ -55,28 +58,27 @@ const Tools = () => {
     setStates((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }, []);
 
-  // 启动时读 config 提示当前保存路径（给用户填文件路径做参考）
-  const [filepath, setFilepath] = useState<string>("");
+  // 当前所选项目的 filepath（给"向量库位置"提示用）
+  const filepath = useMemo<string>(() => {
+    if (!localProjectId) return "";
+    const p = projects.find((x) => x.id === localProjectId);
+    return p?.meta.filepath ?? "";
+  }, [localProjectId, projects]);
+
+  // 切换项目时，清空上次的执行状态（避免串状态）
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const cfg = await api.getConfig();
-        if (mounted) setFilepath(cfg.other_params?.filepath ?? "");
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    setStates({
+      consistency: { running: false },
+      import: { running: false },
+      clear: { running: false },
+    });
+  }, [localProjectId]);
 
   const handleConsistency = async (): Promise<void> => {
     if (states.consistency.running) return;
     updateState("consistency", { running: true, message: undefined, lastTask: undefined });
     try {
-      const resp: TaskCreatedResp = await api.consistencyCheck();
+      const resp: TaskCreatedResp = await api.consistencyCheck(localProjectId);
       pollTask(resp.task_id, (info) => {
         updateState("consistency", {
           running: info.status === "pending" || info.status === "running",
@@ -97,7 +99,7 @@ const Tools = () => {
     if (states.import.running) return;
     updateState("import", { running: true, message: undefined, lastTask: undefined });
     try {
-      const resp: TaskCreatedResp = await api.importKnowledge(knowledgeFile.trim());
+      const resp: TaskCreatedResp = await api.importKnowledge(knowledgeFile.trim(), localProjectId);
       pollTask(resp.task_id, (info) => {
         updateState("import", {
           running: info.status === "pending" || info.status === "running",
@@ -112,10 +114,10 @@ const Tools = () => {
 
   const handleClear = async (): Promise<void> => {
     if (states.clear.running) return;
-    if (!window.confirm("确定要清空向量库吗？此操作不可撤销。")) return;
+    if (!window.confirm("确定要清空所选项目的向量库吗？此操作不可撤销。")) return;
     updateState("clear", { running: true, message: undefined });
     try {
-      const resp = await api.clearVectorStore();
+      const resp = await api.clearVectorStore(localProjectId);
       updateState("clear", {
         running: false,
         message: resp.ok ? "✅ 向量库已清空" : "⚠️ 向量库不存在或清空失败",
@@ -154,10 +156,21 @@ const Tools = () => {
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">工具箱</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          一致性检查、知识库管理。所有异步任务的执行日志将同步显示在右侧。
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">工具箱</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              一致性检查、知识库管理。所有操作均以下方所选项目为作用域，异步任务日志将同步显示在右侧。
+            </p>
+          </div>
+          <ProjectSwitcher
+            projects={projects}
+            value={localProjectId}
+            onChange={setLocalProjectId}
+            size="sm"
+            label="作用域项目"
+          />
+        </div>
       </header>
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-3">

@@ -3,6 +3,7 @@ import { Loader2, Save } from "lucide-react";
 import FormField from "@/components/FormField";
 import PresetSwitcher from "@/components/PresetSwitcher";
 import { api, type OtherParams } from "@/lib/api";
+import { useProjects } from "@/lib/projectContext";
 
 const DEFAULT_PARAMS: OtherParams = {
   topic: "",
@@ -19,6 +20,7 @@ const DEFAULT_PARAMS: OtherParams = {
 };
 
 const Params = () => {
+  const { refresh: refreshProjects, setCurrentProjectId } = useProjects();
   const [params, setParams] = useState<OtherParams>(DEFAULT_PARAMS);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -37,12 +39,15 @@ const Params = () => {
       const p = await api.getPreset(idx.active);
       setParams({ ...DEFAULT_PARAMS, ...p });
       setDirty(false);
+      void refreshProjects();
+      // 保持全局 currentProjectId 与 active 预设一致
+      setCurrentProjectId(idx.active);
     } catch (err) {
       setMessage(`❌ 读取预设失败：${(err as { detail?: string })?.detail ?? String(err)}`);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshProjects, setCurrentProjectId]);
 
   useEffect(() => {
     void loadActive();
@@ -62,6 +67,7 @@ const Params = () => {
       await api.savePreset(activePreset, params);
       setMessage(`✅ 已保存到预设 "${activePreset}"`);
       setDirty(false);
+      void refreshProjects();
     } catch (err) {
       setMessage(`❌ 保存失败：${(err as { detail?: string })?.detail ?? String(err)}`);
     } finally {

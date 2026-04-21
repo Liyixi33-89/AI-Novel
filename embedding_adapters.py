@@ -109,15 +109,19 @@ class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
             "prompt": text
         }
         try:
-            response = requests.post(url, json=data)
+            response = requests.post(url, json=data, timeout=60)
             response.raise_for_status()
             result = response.json()
             if "embedding" not in result:
                 raise ValueError("No 'embedding' field in Ollama response.")
-            return result["embedding"]
+            vec = result["embedding"]
+            if not isinstance(vec, list) or not vec:
+                raise ValueError(f"Ollama returned empty/invalid embedding for text (len={len(text)})")
+            return vec
         except requests.exceptions.RequestException as e:
+            # 不再吞异常返回空向量，抛出让上层 call_with_retry 触发重试
             logging.error(f"Ollama embeddings request error: {e}\n{traceback.format_exc()}")
-            return []
+            raise RuntimeError(f"Ollama embedding request failed: {e}") from e
 
 class MLStudioEmbeddingAdapter(BaseEmbeddingAdapter):
     """

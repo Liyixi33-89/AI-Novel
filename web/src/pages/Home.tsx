@@ -14,6 +14,7 @@ import LogStream from "@/components/LogStream";
 import Modal from "@/components/Modal";
 import PresetSwitcher from "@/components/PresetSwitcher";
 import { api, fetchTask, type OtherParams, type TaskCreatedResp, type TaskInfoResp } from "@/lib/api";
+import { useProjects } from "@/lib/projectContext";
 
 type StepKey = "architecture" | "directory" | "draft" | "finalize";
 
@@ -96,6 +97,7 @@ const StatusBadge = ({ info }: { info?: TaskInfoResp }) => {
 };
 
 const Home = () => {
+  const { refresh: refreshProjects, setCurrentProjectId } = useProjects();
   const [running, setRunning] = useState<RunningMap>({});
 
   // 预设相关
@@ -124,12 +126,16 @@ const Home = () => {
       const p = await api.getPreset(idx.active);
       setParams({ ...DEFAULT_PARAMS, ...p });
       setDirty(false);
+      // 同步刷新项目上下文，使 Files / Characters 等页面感知切换
+      void refreshProjects();
+      // 主操作台 = 全局模式：保持 currentProjectId 与 active 预设一致
+      setCurrentProjectId(idx.active);
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingPreset(false);
     }
-  }, []);
+  }, [refreshProjects, setCurrentProjectId]);
 
   useEffect(() => {
     void loadActivePreset();

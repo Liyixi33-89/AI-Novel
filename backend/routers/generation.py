@@ -9,6 +9,7 @@ import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from ..schemas import (
@@ -18,6 +19,7 @@ from ..schemas import (
     TaskInfoResp,
 )
 from ..services.log_bus import log_bus
+from ..services.projects_service import resolve_filepath
 from ..services.task_runner import task_runner
 from .config import CONFIG_FILE
 
@@ -64,21 +66,42 @@ def _pick_embedding(cfg: dict[str, Any]) -> dict[str, Any]:
     raise HTTPException(status_code=400, detail="未配置任何 embedding")
 
 
-def _get_novel_params(cfg: dict[str, Any]) -> dict[str, Any]:
-    params = cfg.get("other_params", {}) or {}
-    filepath = (params.get("filepath") or "").strip()
+def _get_novel_params(
+    cfg: dict[str, Any], project_id: str | None = None
+) -> dict[str, Any]:
+    """根据 project_id 返回参数块：
+
+    - 若 project_id 有效，用对应 preset 作为 params；否则用 other_params（当前激活）
+    - 保证 filepath 非空并确保目录存在
+    """
+    if project_id:
+        preset = (cfg.get("novel_presets") or {}).get(project_id)
+        if preset is None:
+            raise HTTPException(status_code=404, detail=f"项目不存在：{project_id}")
+        params = dict(preset)
+    else:
+        params = dict(cfg.get("other_params", {}) or {})
+    try:
+        filepath = resolve_filepath(cfg, project_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     if not filepath:
         raise HTTPException(status_code=400, detail="请先在配置中设置保存路径（filepath）")
-    os.makedirs(filepath, exist_ok=True)
+    params["filepath"] = filepath
     return params
+
+
+class _ProjectScopedReq(BaseModel):
+    project_id: str | None = None
 
 
 # ---------- 1) 架构生成 ----------
 @router.post("/generate/architecture", response_model=TaskCreatedResp)
-def gen_architecture() -> TaskCreatedResp:
+def gen_architecture(req: _ProjectScopedReq | None = None) -> TaskCreatedResp:
+    project_id = req.project_id if req else None
     cfg = _load_cfg()
     llm = _pick_llm(cfg, "architecture_llm")
-    params = _get_novel_params(cfg)
+    params = _get_novel_params(cfg, project_id)
 
     def _run() -> None:
         Novel_architecture_generate(
@@ -103,10 +126,11 @@ def gen_architecture() -> TaskCreatedResp:
 
 # ---------- 2) 章节目录 ----------
 @router.post("/generate/directory", response_model=TaskCreatedResp)
-def gen_directory() -> TaskCreatedResp:
+def gen_directory(req: _ProjectScopedReq | None = None) -> TaskCreatedResp:
+    project_id = req.project_id if req else None
     cfg = _load_cfg()
     llm = _pick_llm(cfg, "chapter_outline_llm")
-    params = _get_novel_params(cfg)
+    params = _get_novel_params(cfg, project_id)
 
     def _run() -> None:
         Chapter_blueprint_generate(
@@ -132,7 +156,7 @@ def gen_chapter_draft(req: GenerateChapterDraftReq) -> TaskCreatedResp:
     cfg = _load_cfg()
     llm = _pick_llm(cfg, "prompt_draft_llm")
     emb = _pick_embedding(cfg)
-    params = _get_novel_params(cfg)
+    params = _get_novel_params(cfg, req.project_id)
 
     chap_num = req.chapter_num
     word_number = req.word_number or int(params.get("word_number", 3000) or 3000)
@@ -173,7 +197,7 @@ def gen_finalize(req: FinalizeChapterReq) -> TaskCreatedResp:
     cfg = _load_cfg()
     llm = _pick_llm(cfg, "final_chapter_llm")
     emb = _pick_embedding(cfg)
-    params = _get_novel_params(cfg)
+    params = _get_novel_params(cfg, req.project_id)
 
     chap_num = req.chapter_num
     word_number = req.word_number or int(params.get("word_number", 3000) or 3000)

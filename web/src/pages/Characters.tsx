@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import FormField from "@/components/FormField";
+import ProjectSwitcher from "@/components/ProjectSwitcher";
 import TextEditor from "@/components/TextEditor";
 import {
   api,
@@ -24,6 +25,7 @@ import {
   type CharacterListItem,
   type CharacterSectionKey,
 } from "@/lib/api";
+import { useLocalProject } from "@/lib/projectContext";
 
 type Mode = "structured" | "raw";
 
@@ -50,6 +52,7 @@ const createEmptyCharacter = (name: string): Character => ({
 });
 
 const Characters = () => {
+  const { localProjectId, setLocalProjectId, projects } = useLocalProject();
   const [mode, setMode] = useState<Mode>("structured");
   const [list, setList] = useState<CharacterListItem[]>([]);
   const [loadingList, setLoadingList] = useState<boolean>(true);
@@ -79,18 +82,26 @@ const Characters = () => {
   const loadList = useCallback(async (): Promise<void> => {
     setLoadingList(true);
     try {
-      const items = await api.listCharacters();
+      const items = await api.listCharacters(localProjectId);
       setList(items);
     } catch (err) {
       setMessage(`❌ 加载角色列表失败：${(err as { detail?: string })?.detail ?? String(err)}`);
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [localProjectId]);
 
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  // 切项目后清除详情选中状态
+  useEffect(() => {
+    setSelectedName(null);
+    setDetail(null);
+    setDirty(false);
+    setIsCreating(false);
+  }, [localProjectId]);
 
   // ---- 详情加载 ----
   useEffect(() => {
@@ -100,7 +111,7 @@ const Characters = () => {
       setLoadingDetail(true);
       setMessage(null);
       try {
-        const c = await api.getCharacter(selectedName);
+        const c = await api.getCharacter(selectedName, localProjectId);
         if (!mounted) return;
         setDetail(c);
         setDirty(false);
@@ -114,7 +125,7 @@ const Characters = () => {
     return () => {
       mounted = false;
     };
-  }, [selectedName, isCreating]);
+  }, [selectedName, isCreating, localProjectId]);
 
   // ---- raw 模式 ----
   useEffect(() => {
@@ -123,7 +134,7 @@ const Characters = () => {
     (async () => {
       setLoadingRaw(true);
       try {
-        const r = await api.readRawCharacters();
+        const r = await api.readRawCharacters(localProjectId);
         if (mounted) setRawText(r.content ?? "");
       } catch (err) {
         setMessage(`❌ ${(err as { detail?: string })?.detail ?? String(err)}`);
@@ -134,7 +145,7 @@ const Characters = () => {
     return () => {
       mounted = false;
     };
-  }, [mode]);
+  }, [mode, localProjectId]);
 
   // ---- 动作 ----
   const handleNew = (): void => {
@@ -158,7 +169,7 @@ const Characters = () => {
     if (!selectedName || isCreating) return;
     if (!window.confirm(`确定删除角色 "${selectedName}"？`)) return;
     try {
-      await api.deleteCharacter(selectedName);
+      await api.deleteCharacter(selectedName, localProjectId);
       setSelectedName(null);
       setDetail(null);
       setDirty(false);
@@ -180,13 +191,13 @@ const Characters = () => {
     setMessage(null);
     try {
       if (isCreating) {
-        const created = await api.createCharacter(detail);
+        const created = await api.createCharacter(detail, localProjectId);
         setIsCreating(false);
         setSelectedName(created.name);
         setDetail(created);
         setMessage(`✅ 已创建：${created.name}`);
       } else if (selectedName) {
-        const updated = await api.updateCharacter(selectedName, detail);
+        const updated = await api.updateCharacter(selectedName, detail, localProjectId);
         setSelectedName(updated.name);
         setDetail(updated);
         setMessage(`✅ 已保存：${updated.name}`);
@@ -256,7 +267,7 @@ const Characters = () => {
 
   // ---- Raw 模式保存 ----
   const handleSaveRaw = async (next: string): Promise<void> => {
-    await api.saveRawCharacters(next);
+    await api.saveRawCharacters(next, localProjectId);
     await loadList();
   };
 
@@ -279,7 +290,15 @@ const Characters = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ProjectSwitcher
+            projects={projects}
+            value={localProjectId}
+            onChange={setLocalProjectId}
+            size="sm"
+            label="查看项目"
+            showBadge={false}
+          />
           <div className="flex rounded-md border border-slate-300 bg-white p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
             <button
               type="button"

@@ -5,26 +5,31 @@ import Config from "@/pages/Config";
 import Files from "@/pages/Files";
 import Home from "@/pages/Home";
 import Params from "@/pages/Params";
+import Projects from "@/pages/Projects";
 import Settings from "@/pages/Settings";
 import Tools from "@/pages/Tools";
+import { ProjectProvider } from "@/lib/projectContext";
 
 const App = () => {
   return (
-    <div className="flex h-full w-full flex-col lg:flex-row">
-      <Sidebar />
-      <main className="flex-1 overflow-hidden">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/params" element={<Params />} />
-          <Route path="/config" element={<Config />} />
-          <Route path="/files" element={<Files />} />
-          <Route path="/characters" element={<Characters />} />
-          <Route path="/tools" element={<Tools />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <ProjectProvider>
+      <div className="flex h-full w-full flex-col lg:flex-row">
+        <Sidebar />
+        <main className="flex-1 overflow-hidden">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/params" element={<Params />} />
+            <Route path="/config" element={<Config />} />
+            <Route path="/files" element={<Files />} />
+            <Route path="/characters" element={<Characters />} />
+            <Route path="/tools" element={<Tools />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </ProjectProvider>
   );
 };
 

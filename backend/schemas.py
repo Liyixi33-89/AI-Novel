@@ -112,12 +112,14 @@ class GenerateChapterDraftReq(BaseModel):
     scene_location: str = ""
     time_constraint: str = ""
     custom_prompt_text: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class FinalizeChapterReq(BaseModel):
     chapter_num: int = 1
     word_number: int = 3000
     edited_text: Optional[str] = None  # 若提供则覆盖当前磁盘文件
+    project_id: Optional[str] = None
 
 
 # ---------- Tools ----------
@@ -163,6 +165,7 @@ class BuildPromptReq(BaseModel):
     key_items: str = ""
     scene_location: str = ""
     time_constraint: str = ""
+    project_id: Optional[str] = None
 
 
 class BuildPromptResp(BaseModel):
@@ -171,6 +174,7 @@ class BuildPromptResp(BaseModel):
 
 class ImportKnowledgeReq(BaseModel):
     file_path: str
+    project_id: Optional[str] = None
 
 
 # ---------- Characters ----------
@@ -214,3 +218,42 @@ class RawCharacterStateReq(BaseModel):
 
 class CharacterRenameReq(BaseModel):
     new_name: str
+
+
+# ---------- Projects ----------
+class ProjectStatsResp(BaseModel):
+    chapter_count: int = 0
+    total_chars: int = 0
+    character_count: int = 0
+    has_architecture: bool = False
+    has_directory: bool = False
+    has_summary: bool = False
+    last_modified: Optional[float] = None
+    filepath_exists: bool = False
+
+
+class ProjectResp(BaseModel):
+    id: str
+    name: str
+    is_active: bool = False
+    meta: OtherParams
+    stats: ProjectStatsResp
+
+
+class ProjectCreateReq(BaseModel):
+    name: str
+    meta: OtherParams = Field(default_factory=OtherParams)
+    copy_from: Optional[str] = None
+
+
+class ProjectUpdateReq(BaseModel):
+    meta: OtherParams
+
+
+class ProjectDeleteReq(BaseModel):
+    delete_files: bool = False
+
+
+class ProjectDeleteResp(BaseModel):
+    ok: bool
+    active: str

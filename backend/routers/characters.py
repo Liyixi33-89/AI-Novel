@@ -1,14 +1,13 @@
 # backend/routers/characters.py
 # -*- coding: utf-8 -*-
-"""角色库 CRUD 接口。
+"""角色库 CRUD 接口。支持 ?project_id=xxx 作用域隔离。
 
 数据源：`{filepath}/character_state.txt`
-存储：实时读取/写入磁盘文件（每次 API 调用都重新 parse/serialize，保持与文件的一致性）。
 """
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -27,6 +26,7 @@ from ..services.character_parser import (
     parse_character_state,
     serialize_characters,
 )
+from ..services.projects_service import resolve_filepath
 from .config import CONFIG_FILE
 
 from config_manager import load_config
@@ -35,27 +35,29 @@ router = APIRouter(prefix="/api/characters", tags=["characters"])
 
 
 # ---------- 公共帮助函数 ----------
-def _get_character_state_path() -> str:
+def _get_character_state_path(project_id: Optional[str] = None) -> str:
     cfg = load_config(CONFIG_FILE)
     if not cfg:
         raise HTTPException(status_code=500, detail="配置文件加载失败")
-    filepath = (cfg.get("other_params", {}) or {}).get("filepath", "").strip()
+    try:
+        filepath = resolve_filepath(cfg, project_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     if not filepath:
         raise HTTPException(status_code=400, detail="请先在配置中设置保存路径（filepath）")
-    os.makedirs(filepath, exist_ok=True)
     return os.path.join(filepath, "character_state.txt")
 
 
-def _read_all() -> list[dict[str, Any]]:
-    path = _get_character_state_path()
+def _read_all(project_id: Optional[str] = None) -> list[dict[str, Any]]:
+    path = _get_character_state_path(project_id)
     if not os.path.exists(path):
         return []
     with open(path, "r", encoding="utf-8") as f:
         return parse_character_state(f.read())
 
 
-def _write_all(chars: list[dict[str, Any]]) -> None:
-    path = _get_character_state_path()
+def _write_all(chars: list[dict[str, Any]], project_id: Optional[str] = None) -> None:
+    path = _get_character_state_path(project_id)
     content = serialize_characters(chars)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -112,40 +114,64 @@ def _to_list_item(c: dict[str, Any]) -> CharacterListItem:
     )
 
 
+# ---------- 原始文本（路径必须在 /{name} 之前！） ----------
+@router.get("/raw/text", response_model=RawCharacterStateResp)
+def read_raw(project_id: Optional[str] = None) -> RawCharacterStateResp:
+    path = _get_character_state_path(project_id)
+    if not os.path.exists(path):
+        return RawCharacterStateResp(content="")
+    with open(path, "r", encoding="utf-8") as f:
+        return RawCharacterStateResp(content=f.read())
+
+
+@router.post("/raw/text")
+def write_raw(req: RawCharacterStateReq, project_id: Optional[str] = None) -> dict[str, Any]:
+    path = _get_character_state_path(project_id)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(req.content)
+    return {"ok": True}
+
+
+# ---------- 辅助：新建空角色模板 ----------
+@router.post("/_bootstrap_empty", response_model=Character)
+def bootstrap_empty_template(name: str = "新角色") -> Character:
+    """前端点"新建"时可先调这个拿个空壳（但不写盘）。"""
+    return _dict_to_character_model(new_empty_character(name))
+
+
 # ---------- 列表与详情 ----------
 @router.get("", response_model=list[CharacterListItem])
-def list_characters() -> list[CharacterListItem]:
-    chars = _read_all()
+def list_characters(project_id: Optional[str] = None) -> list[CharacterListItem]:
+    chars = _read_all(project_id)
     return [_to_list_item(c) for c in chars]
 
 
+@router.post("", response_model=Character)
+def create_character(payload: Character, project_id: Optional[str] = None) -> Character:
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="角色名不能为空")
+    chars = _read_all(project_id)
+    if _find_index(chars, name) >= 0:
+        raise HTTPException(status_code=409, detail=f"角色已存在：{name}")
+    new_char = _to_character_dict(payload)
+    chars.append(new_char)
+    _write_all(chars, project_id)
+    return _dict_to_character_model(new_char)
+
+
 @router.get("/{name}", response_model=Character)
-def get_character(name: str) -> Character:
-    chars = _read_all()
+def get_character(name: str, project_id: Optional[str] = None) -> Character:
+    chars = _read_all(project_id)
     idx = _find_index(chars, name)
     if idx < 0:
         raise HTTPException(status_code=404, detail=f"角色不存在：{name}")
     return _dict_to_character_model(chars[idx])
 
 
-# ---------- 新建 / 更新 / 删除 ----------
-@router.post("", response_model=Character)
-def create_character(payload: Character) -> Character:
-    name = (payload.name or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="角色名不能为空")
-    chars = _read_all()
-    if _find_index(chars, name) >= 0:
-        raise HTTPException(status_code=409, detail=f"角色已存在：{name}")
-    new_char = _to_character_dict(payload)
-    chars.append(new_char)
-    _write_all(chars)
-    return _dict_to_character_model(new_char)
-
-
 @router.put("/{name}", response_model=Character)
-def update_character(name: str, payload: Character) -> Character:
-    chars = _read_all()
+def update_character(name: str, payload: Character, project_id: Optional[str] = None) -> Character:
+    chars = _read_all(project_id)
     idx = _find_index(chars, name)
     if idx < 0:
         raise HTTPException(status_code=404, detail=f"角色不存在：{name}")
@@ -156,13 +182,15 @@ def update_character(name: str, payload: Character) -> Character:
     if new_name != name and _find_index(chars, new_name) >= 0:
         raise HTTPException(status_code=409, detail=f"新角色名已存在：{new_name}")
     chars[idx] = _to_character_dict(payload)
-    _write_all(chars)
+    _write_all(chars, project_id)
     return _dict_to_character_model(chars[idx])
 
 
 @router.post("/{name}/rename", response_model=Character)
-def rename_character(name: str, req: CharacterRenameReq) -> Character:
-    chars = _read_all()
+def rename_character(
+    name: str, req: CharacterRenameReq, project_id: Optional[str] = None
+) -> Character:
+    chars = _read_all(project_id)
     idx = _find_index(chars, name)
     if idx < 0:
         raise HTTPException(status_code=404, detail=f"角色不存在：{name}")
@@ -174,41 +202,16 @@ def rename_character(name: str, req: CharacterRenameReq) -> Character:
     if _find_index(chars, new_name) >= 0:
         raise HTTPException(status_code=409, detail=f"新角色名已存在：{new_name}")
     chars[idx]["name"] = new_name
-    _write_all(chars)
+    _write_all(chars, project_id)
     return _dict_to_character_model(chars[idx])
 
 
 @router.delete("/{name}")
-def delete_character(name: str) -> dict[str, Any]:
-    chars = _read_all()
+def delete_character(name: str, project_id: Optional[str] = None) -> dict[str, Any]:
+    chars = _read_all(project_id)
     idx = _find_index(chars, name)
     if idx < 0:
         raise HTTPException(status_code=404, detail=f"角色不存在：{name}")
     del chars[idx]
-    _write_all(chars)
+    _write_all(chars, project_id)
     return {"ok": True}
-
-
-# ---------- 兜底：直接操作原始 txt ----------
-@router.get("/raw/text", response_model=RawCharacterStateResp)
-def read_raw() -> RawCharacterStateResp:
-    path = _get_character_state_path()
-    if not os.path.exists(path):
-        return RawCharacterStateResp(content="")
-    with open(path, "r", encoding="utf-8") as f:
-        return RawCharacterStateResp(content=f.read())
-
-
-@router.post("/raw/text")
-def write_raw(req: RawCharacterStateReq) -> dict[str, Any]:
-    path = _get_character_state_path()
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(req.content)
-    return {"ok": True}
-
-
-# ---------- 辅助：新建空角色模板 ----------
-@router.post("/_bootstrap_empty", response_model=Character)
-def bootstrap_empty_template(name: str = "新角色") -> Character:
-    """前端点"新建"时可先调这个拿个空壳（但不写盘）。"""
-    return _dict_to_character_model(new_empty_character(name))

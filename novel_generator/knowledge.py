@@ -10,7 +10,11 @@ import traceback
 import nltk
 import warnings
 from utils import read_file
-from novel_generator.vectorstore_utils import load_vector_store, init_vector_store
+from novel_generator.vectorstore_utils import (
+    _embed_and_filter,
+    init_vector_store,
+    load_vector_store,
+)
 from langchain.docstore.document import Document
 
 # 禁用特定的Torch警告
@@ -84,10 +88,22 @@ def import_knowledge_file(
         else:
             logging.warning("知识库导入失败，跳过。")
     else:
+        valid_texts, valid_vecs = _embed_and_filter(embedding_adapter, paragraphs)
+        if not valid_texts:
+            logging.warning("知识库导入失败：所有段落 embedding 均为空。")
+            return
         try:
-            docs = [Document(page_content=str(p)) for p in paragraphs]
-            store.add_documents(docs)
-            logging.info("知识库文件已成功导入至向量库(追加模式)。")
+            import time as _time
+            prefix = f"kb-{int(_time.time() * 1000)}"
+            ids = [f"{prefix}-{i}" for i in range(len(valid_texts))]
+            store._collection.add(
+                ids=ids,
+                documents=[str(t) for t in valid_texts],
+                embeddings=valid_vecs,
+            )
+            logging.info(
+                f"知识库文件已成功导入至向量库(追加模式)：{len(valid_texts)}/{len(paragraphs)} 段。"
+            )
         except Exception as e:
             logging.warning(f"知识库导入失败: {e}")
             traceback.print_exc()

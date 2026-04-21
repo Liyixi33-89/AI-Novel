@@ -174,22 +174,56 @@ export type FullConfig = {
   webdav_config: { webdav_url: string; webdav_username: string; webdav_password: string };
 };
 
+// ---------- Projects ----------
+export type ProjectStats = {
+  chapter_count: number;
+  total_chars: number;
+  character_count: number;
+  has_architecture: boolean;
+  has_directory: boolean;
+  has_summary: boolean;
+  last_modified: number | null;
+  filepath_exists: boolean;
+};
+
+export type ProjectInfo = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  meta: OtherParams;
+  stats: ProjectStats;
+};
+
+const withProject = (path: string, projectId?: string | null): string => {
+  if (!projectId) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}project_id=${encodeURIComponent(projectId)}`;
+};
+
 export const api = {
   getConfig: () => apiGet<FullConfig>("/api/config"),
   saveConfig: (cfg: FullConfig) => apiPost<{ ok: boolean }>("/api/config", cfg),
-  generateArchitecture: () => apiPost<TaskCreatedResp>("/api/generate/architecture"),
-  generateDirectory: () => apiPost<TaskCreatedResp>("/api/generate/directory"),
-  generateChapterDraft: (req: GenerateChapterDraftReq) =>
-    apiPost<TaskCreatedResp>("/api/generate/chapter_draft", req),
-  finalizeChapter: (req: FinalizeChapterReq) =>
-    apiPost<TaskCreatedResp>("/api/generate/finalize_chapter", req),
-  readFile: (name: string) => apiGet<FileContentResp>(`/api/files/${encodeURIComponent(name)}`),
-  saveFile: (name: string, content: string) =>
-    apiPost<{ ok: boolean }>(`/api/files/${encodeURIComponent(name)}`, { content }),
-  listChapters: () => apiGet<ChapterInfoResp[]>("/api/files/chapters/list"),
-  readChapter: (n: number) => apiGet<FileContentResp>(`/api/files/chapters/${n}`),
-  saveChapter: (n: number, content: string) =>
-    apiPost<{ ok: boolean }>(`/api/files/chapters/${n}`, { content }),
+  generateArchitecture: (projectId?: string | null) =>
+    apiPost<TaskCreatedResp>("/api/generate/architecture", { project_id: projectId ?? null }),
+  generateDirectory: (projectId?: string | null) =>
+    apiPost<TaskCreatedResp>("/api/generate/directory", { project_id: projectId ?? null }),
+  generateChapterDraft: (req: GenerateChapterDraftReq, projectId?: string | null) =>
+    apiPost<TaskCreatedResp>("/api/generate/chapter_draft", { ...req, project_id: projectId ?? null }),
+  finalizeChapter: (req: FinalizeChapterReq, projectId?: string | null) =>
+    apiPost<TaskCreatedResp>("/api/generate/finalize_chapter", { ...req, project_id: projectId ?? null }),
+  readFile: (name: string, projectId?: string | null) =>
+    apiGet<FileContentResp>(withProject(`/api/files/${encodeURIComponent(name)}`, projectId)),
+  saveFile: (name: string, content: string, projectId?: string | null) =>
+    apiPost<{ ok: boolean }>(
+      withProject(`/api/files/${encodeURIComponent(name)}`, projectId),
+      { content },
+    ),
+  listChapters: (projectId?: string | null) =>
+    apiGet<ChapterInfoResp[]>(withProject("/api/files/chapters/list", projectId)),
+  readChapter: (n: number, projectId?: string | null) =>
+    apiGet<FileContentResp>(withProject(`/api/files/chapters/${n}`, projectId)),
+  saveChapter: (n: number, content: string, projectId?: string | null) =>
+    apiPost<{ ok: boolean }>(withProject(`/api/files/chapters/${n}`, projectId), { content }),
   // -------- tools --------
   testLLM: (llm_name?: string) =>
     apiPost<{ ok: boolean; response?: string; error?: string }>("/api/tools/test_llm", {
@@ -201,34 +235,49 @@ export const api = {
     }),
   listModels: (payload: { interface_format: string; base_url: string; api_key: string }) =>
     apiPost<{ models: string[] }>("/api/tools/list_models", payload),
-  consistencyCheck: () => apiPost<TaskCreatedResp>("/api/tools/consistency_check"),
-  importKnowledge: (file_path: string) =>
-    apiPost<TaskCreatedResp>("/api/tools/import_knowledge", { file_path }),
-  clearVectorStore: () => apiPost<{ ok: boolean }>("/api/tools/clear_vectorstore"),
-  buildPrompt: (payload: {
-    chapter_num: number;
-    word_number: number;
-    user_guidance?: string;
-    characters_involved?: string;
-    key_items?: string;
-    scene_location?: string;
-    time_constraint?: string;
-  }) => apiPost<{ prompt: string }>("/api/tools/build_prompt", payload),
+  consistencyCheck: (projectId?: string | null) =>
+    apiPost<TaskCreatedResp>("/api/tools/consistency_check", { project_id: projectId ?? null }),
+  importKnowledge: (file_path: string, projectId?: string | null) =>
+    apiPost<TaskCreatedResp>("/api/tools/import_knowledge", {
+      file_path,
+      project_id: projectId ?? null,
+    }),
+  clearVectorStore: (projectId?: string | null) =>
+    apiPost<{ ok: boolean }>("/api/tools/clear_vectorstore", { project_id: projectId ?? null }),
+  buildPrompt: (
+    payload: {
+      chapter_num: number;
+      word_number: number;
+      user_guidance?: string;
+      characters_involved?: string;
+      key_items?: string;
+      scene_location?: string;
+      time_constraint?: string;
+    },
+    projectId?: string | null,
+  ) => apiPost<{ prompt: string }>("/api/tools/build_prompt", { ...payload, project_id: projectId ?? null }),
   // -------- characters --------
-  listCharacters: () => apiGet<CharacterListItem[]>("/api/characters"),
-  getCharacter: (name: string) =>
-    apiGet<Character>(`/api/characters/${encodeURIComponent(name)}`),
-  createCharacter: (payload: Character) =>
-    apiPost<Character>("/api/characters", payload),
-  updateCharacter: (name: string, payload: Character) =>
-    apiPut<Character>(`/api/characters/${encodeURIComponent(name)}`, payload),
-  renameCharacter: (name: string, new_name: string) =>
-    apiPost<Character>(`/api/characters/${encodeURIComponent(name)}/rename`, { new_name }),
-  deleteCharacter: (name: string) =>
-    apiDelete<{ ok: boolean }>(`/api/characters/${encodeURIComponent(name)}`),
-  readRawCharacters: () => apiGet<{ content: string }>("/api/characters/raw/text"),
-  saveRawCharacters: (content: string) =>
-    apiPost<{ ok: boolean }>("/api/characters/raw/text", { content }),
+  listCharacters: (projectId?: string | null) =>
+    apiGet<CharacterListItem[]>(withProject("/api/characters", projectId)),
+  getCharacter: (name: string, projectId?: string | null) =>
+    apiGet<Character>(withProject(`/api/characters/${encodeURIComponent(name)}`, projectId)),
+  createCharacter: (payload: Character, projectId?: string | null) =>
+    apiPost<Character>(withProject("/api/characters", projectId), payload),
+  updateCharacter: (name: string, payload: Character, projectId?: string | null) =>
+    apiPut<Character>(withProject(`/api/characters/${encodeURIComponent(name)}`, projectId), payload),
+  renameCharacter: (name: string, new_name: string, projectId?: string | null) =>
+    apiPost<Character>(
+      withProject(`/api/characters/${encodeURIComponent(name)}/rename`, projectId),
+      { new_name },
+    ),
+  deleteCharacter: (name: string, projectId?: string | null) =>
+    apiDelete<{ ok: boolean }>(
+      withProject(`/api/characters/${encodeURIComponent(name)}`, projectId),
+    ),
+  readRawCharacters: (projectId?: string | null) =>
+    apiGet<{ content: string }>(withProject("/api/characters/raw/text", projectId)),
+  saveRawCharacters: (content: string, projectId?: string | null) =>
+    apiPost<{ ok: boolean }>(withProject("/api/characters/raw/text", projectId), { content }),
   // -------- presets --------
   listPresets: () =>
     apiGet<{ active: string; names: string[] }>("/api/presets"),
@@ -249,8 +298,24 @@ export const api = {
       `/api/presets/${encodeURIComponent(name)}/rename`,
       { new_name },
     ),
+  // -------- projects --------
+  listProjects: () => apiGet<ProjectInfo[]>("/api/projects"),
+  getProject: (projectId: string) =>
+    apiGet<ProjectInfo>(`/api/projects/${encodeURIComponent(projectId)}`),
+  createProject: (payload: { name: string; meta: OtherParams; copy_from?: string | null }) =>
+    apiPost<ProjectInfo>("/api/projects", payload),
+  updateProject: (projectId: string, meta: OtherParams) =>
+    apiPut<ProjectInfo>(`/api/projects/${encodeURIComponent(projectId)}`, { meta }),
+  activateProject: (projectId: string) =>
+    apiPost<ProjectInfo>(`/api/projects/${encodeURIComponent(projectId)}/activate`),
+  deleteProject: (projectId: string, deleteFiles = false) =>
+    apiPost<{ ok: boolean; active: string }>(
+      `/api/projects/${encodeURIComponent(projectId)}/delete`,
+      { delete_files: deleteFiles },
+    ),
   // -------- misc --------
-  openFolder: () => apiPost<{ ok: boolean; path: string }>("/api/files/open_folder"),
+  openFolder: (projectId?: string | null) =>
+    apiPost<{ ok: boolean; path: string }>(withProject("/api/files/open_folder", projectId)),
 };
 
 // ---------- Character 相关类型 ----------

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, FileText, Loader2, RefreshCw, Users } from "lucide-react";
+import { BookOpen, FileText, Loader2, PackageOpen, RefreshCw, Users } from "lucide-react";
+import ProjectSwitcher from "@/components/ProjectSwitcher";
 import TextEditor from "@/components/TextEditor";
 import { api, cn, type ChapterInfoResp } from "@/lib/api";
+import { useLocalProject } from "@/lib/projectContext";
 
 type MetaKey = "architecture" | "directory" | "summary" | "character";
 
@@ -17,6 +19,7 @@ const META_ITEMS: Array<{ key: MetaKey; label: string; icon: React.ComponentType
 ];
 
 const Files = () => {
+  const { localProjectId, setLocalProjectId, projects } = useLocalProject();
   const [active, setActive] = useState<ActiveFile>({ type: "meta", key: "architecture" });
   const [content, setContent] = useState<string>("");
   const [loadingContent, setLoadingContent] = useState(false);
@@ -27,14 +30,14 @@ const Files = () => {
   const loadChapters = useCallback(async (): Promise<void> => {
     setLoadingChapters(true);
     try {
-      const list = await api.listChapters();
+      const list = await api.listChapters(localProjectId);
       setChapters(list);
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingChapters(false);
     }
-  }, []);
+  }, [localProjectId]);
 
   const loadContent = useCallback(async (target: ActiveFile): Promise<void> => {
     setLoadingContent(true);
@@ -42,8 +45,8 @@ const Files = () => {
     try {
       const res =
         target.type === "meta"
-          ? await api.readFile(target.key)
-          : await api.readChapter(target.number);
+          ? await api.readFile(target.key, localProjectId)
+          : await api.readChapter(target.number, localProjectId);
       setContent(res.content ?? "");
     } catch (err) {
       const detail = (err as { detail?: string })?.detail ?? String(err);
@@ -52,7 +55,7 @@ const Files = () => {
     } finally {
       setLoadingContent(false);
     }
-  }, []);
+  }, [localProjectId]);
 
   useEffect(() => {
     void loadChapters();
@@ -64,11 +67,21 @@ const Files = () => {
 
   const handleSave = async (next: string): Promise<void> => {
     if (active.type === "meta") {
-      await api.saveFile(active.key, next);
+      await api.saveFile(active.key, next, localProjectId);
     } else {
-      await api.saveChapter(active.number, next);
+      await api.saveChapter(active.number, next, localProjectId);
       // 保存章节后刷新列表（可能大小变化）
       void loadChapters();
+    }
+  };
+
+  const handleOpenFolder = async (): Promise<void> => {
+    try {
+      const r = await api.openFolder(localProjectId);
+      if (!r.ok) window.alert(`打开失败：${r.path}`);
+    } catch (err) {
+      const detail = (err as { detail?: string })?.detail ?? String(err);
+      window.alert(`打开失败：${detail}`);
     }
   };
 
@@ -83,8 +96,33 @@ const Files = () => {
   return (
     <div className="flex h-full flex-col">
       <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">文件预览</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">查看或编辑生成的小说文本。保存后会写回磁盘。</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">文件预览</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              查看或编辑生成的小说文本。保存后会写回磁盘。此页面的项目选择独立生效，不影响全局默认。
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <ProjectSwitcher
+              projects={projects}
+              value={localProjectId}
+              onChange={setLocalProjectId}
+              size="sm"
+              label="查看项目"
+            />
+            <button
+              type="button"
+              onClick={handleOpenFolder}
+              className="btn-secondary !px-2.5 !py-1 text-xs"
+              aria-label="打开文件夹"
+              tabIndex={0}
+            >
+              <PackageOpen className="h-3.5 w-3.5" />
+              文件夹
+            </button>
+          </div>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

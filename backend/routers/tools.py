@@ -9,6 +9,7 @@ from typing import Any
 
 import requests
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from ..schemas import (
     BuildPromptReq,
@@ -23,6 +24,7 @@ from ..schemas import (
     TestLLMResp,
 )
 from ..services.log_bus import log_bus
+from ..services.projects_service import resolve_filepath
 from ..services.task_runner import task_runner
 from .config import CONFIG_FILE
 
@@ -36,6 +38,36 @@ from novel_generator.vectorstore_utils import clear_vector_store
 from utils import read_file
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
+
+
+class _ProjectScopedReq(BaseModel):
+    project_id: str | None = None
+
+
+def _resolve_project_filepath(cfg: dict[str, Any], project_id: str | None) -> str:
+    """获取指定项目的 filepath（未指定时用当前激活）。"""
+    try:
+        fp = resolve_filepath(cfg, project_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not fp:
+        raise HTTPException(status_code=400, detail="请先配置保存路径")
+    return fp
+
+
+def _resolve_project_params(
+    cfg: dict[str, Any], project_id: str | None
+) -> tuple[dict[str, Any], str]:
+    if project_id:
+        preset = (cfg.get("novel_presets") or {}).get(project_id)
+        if preset is None:
+            raise HTTPException(status_code=404, detail=f"项目不存在：{project_id}")
+        params = dict(preset)
+    else:
+        params = dict(cfg.get("other_params", {}) or {})
+    fp = _resolve_project_filepath(cfg, project_id)
+    params["filepath"] = fp
+    return params, fp
 
 
 def _load_cfg() -> dict[str, Any]:
@@ -127,17 +159,15 @@ def list_models(req: ListModelsReq) -> ListModelsResp:
 
 # ---------- 3) 一致性检查（异步任务） ----------
 @router.post("/consistency_check", response_model=TaskCreatedResp)
-def consistency_check() -> TaskCreatedResp:
+def consistency_check(req: _ProjectScopedReq | None = None) -> TaskCreatedResp:
+    project_id = req.project_id if req else None
     cfg = _load_cfg()
     chosen = cfg.get("choose_configs", {}).get("consistency_review_llm", "")
     llm = cfg.get("llm_configs", {}).get(chosen)
     if not llm:
         raise HTTPException(status_code=400, detail=f"一致性审校 LLM 未配置：{chosen}")
 
-    params = cfg.get("other_params", {}) or {}
-    filepath = (params.get("filepath") or "").strip()
-    if not filepath:
-        raise HTTPException(status_code=400, detail="请先配置保存路径")
+    params, filepath = _resolve_project_params(cfg, project_id)
 
     try:
         chap_num = int(params.get("chapter_num", 1) or 1)
@@ -182,10 +212,7 @@ def consistency_check() -> TaskCreatedResp:
 @router.post("/import_knowledge", response_model=TaskCreatedResp)
 def import_knowledge(req: ImportKnowledgeReq) -> TaskCreatedResp:
     cfg = _load_cfg()
-    params = cfg.get("other_params", {}) or {}
-    filepath = (params.get("filepath") or "").strip()
-    if not filepath:
-        raise HTTPException(status_code=400, detail="请先配置保存路径")
+    filepath = _resolve_project_filepath(cfg, req.project_id)
 
     last = cfg.get("last_embedding_interface_format", "")
     emb = cfg.get("embedding_configs", {}).get(last)
@@ -217,12 +244,10 @@ def import_knowledge(req: ImportKnowledgeReq) -> TaskCreatedResp:
 
 # ---------- 5) 清空向量库 ----------
 @router.post("/clear_vectorstore")
-def clear_vectorstore() -> dict[str, Any]:
+def clear_vectorstore(req: _ProjectScopedReq | None = None) -> dict[str, Any]:
+    project_id = req.project_id if req else None
     cfg = _load_cfg()
-    params = cfg.get("other_params", {}) or {}
-    filepath = (params.get("filepath") or "").strip()
-    if not filepath:
-        raise HTTPException(status_code=400, detail="请先配置保存路径")
+    filepath = _resolve_project_filepath(cfg, project_id)
     ok = clear_vector_store(filepath)
     if ok:
         log_bus.publish("🗑 向量库已清空")
@@ -243,10 +268,7 @@ def build_prompt(req: BuildPromptReq) -> BuildPromptResp:
     last = cfg.get("last_embedding_interface_format", "")
     emb = cfg.get("embedding_configs", {}).get(last, {})
 
-    params = cfg.get("other_params", {}) or {}
-    filepath = (params.get("filepath") or "").strip()
-    if not filepath:
-        raise HTTPException(status_code=400, detail="请先配置保存路径")
+    params, filepath = _resolve_project_params(cfg, req.project_id)
 
     try:
         prompt = build_chapter_prompt(

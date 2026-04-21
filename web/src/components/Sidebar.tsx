@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
+  BookOpen,
   BookText,
   FileText,
   Home as HomeIcon,
@@ -8,11 +9,13 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
+  Star,
   Users,
   Wrench,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/api";
+import { useProjects } from "@/lib/projectContext";
 import ThemeToggle from "./ThemeToggle";
 
 type NavItem = {
@@ -23,6 +26,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "主操作台", icon: HomeIcon },
+  { to: "/projects", label: "我的小说", icon: BookOpen },
   { to: "/params", label: "小说参数", icon: Sparkles },
   { to: "/config", label: "模型配置", icon: Settings },
   { to: "/files", label: "文件预览", icon: FileText },
@@ -33,6 +37,9 @@ const NAV_ITEMS: NavItem[] = [
 
 const Sidebar = () => {
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
+  const { currentProject, projects } = useProjects();
+  const activeProject = projects.find((p) => p.is_active) ?? null;
+  const displayProject = currentProject ?? activeProject;
 
   // 路由切换时自动收起移动端菜单
   useEffect(() => {
@@ -100,6 +107,25 @@ const Sidebar = () => {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+          {displayProject ? (
+            <NavLink
+              to="/projects"
+              onClick={handleClose}
+              className="mb-2 flex items-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-xs transition hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:hover:bg-brand-500/20"
+              aria-label="查看当前项目"
+              tabIndex={0}
+            >
+              <Star className="h-3.5 w-3.5 shrink-0 fill-brand-500 text-brand-500" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[10px] uppercase tracking-wide text-brand-600 dark:text-brand-300">
+                  当前项目
+                </div>
+                <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  {displayProject.name}
+                </div>
+              </div>
+            </NavLink>
+          ) : null}
           {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
@@ -124,7 +150,7 @@ const Sidebar = () => {
         </nav>
 
         <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
-          v0.2.0 · Phase 1 完成
+          v0.3.0 · 多项目架构
         </div>
       </aside>
     </>
